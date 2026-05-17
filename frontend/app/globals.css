@@ -1,106 +1,373 @@
+/* ChatGPT-inspired theme */
+:root {
+  --bg: #212121;
+  --bg-subtle: #171717;
+  --surface: #2f2f2f;
+  --surface-input: #40414f;
+  --surface-hover: #3a3a3a;
+  --border: #424242;
+  --border-subtle: #565869;
+  --text: #ececec;
+  --text-muted: #9b9b9b;
+  --text-faint: #6e6e80;
+  --accent: #10a37f;
+  --accent-hover: #1a7f64;
+  --link: #7ab7ff;
+  --radius: 12px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+  --shadow: 0 0 0 1px rgba(0, 0, 0, 0.1), 0 4px 24px rgba(0, 0, 0, 0.25);
+  --font: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, monospace;
+}
+
 * {
   box-sizing: border-box;
 }
 
+html {
+  color-scheme: dark;
+}
+
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, sans-serif;
-  background: #0f1419;
-  color: #e7e9ea;
+  min-height: 100vh;
+  font-family: var(--font);
+  font-size: 1rem;
+  line-height: 1.5;
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
 }
 
 a {
-  color: #1d9bf0;
+  color: var(--link);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+a:hover {
+  color: #a8d4ff;
 }
 
 main {
   max-width: 28rem;
   margin: 0 auto;
-  padding: 2rem 1rem;
+  padding: 2rem 1.25rem 3rem;
 }
 
+main.page-wide {
+  max-width: 40rem;
+}
+
+/* Top nav — ChatGPT header bar */
+.nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.25rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem 1.25rem;
+  background: var(--bg-subtle);
+  border-bottom: 1px solid var(--border);
+}
+
+.nav a {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  font-weight: 500;
+  padding: 0.35rem 0.5rem;
+  border-radius: 8px;
+  text-decoration: none;
+}
+
+.nav a:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+/* Cards */
 .card {
-  background: #16181c;
-  border: 1px solid #2f3336;
-  border-radius: 12px;
-  padding: 1.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem 1.25rem;
+  box-shadow: var(--shadow);
+}
+
+.card + .card,
+.card-spaced {
+  margin-top: 1rem;
 }
 
 .card h1 {
-  margin: 0 0 0.25rem;
-  font-size: 1.5rem;
+  margin: 0 0 0.35rem;
+  font-size: 1.375rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text);
 }
 
-.card p.sub {
+.card h2,
+.card-title {
+  margin: 0 0 0.5rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.card p.sub,
+.sub {
   margin: 0 0 1.25rem;
-  color: #71767b;
-  font-size: 0.9rem;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.card-footer {
+  margin-top: 1.25rem;
+  margin-bottom: 0;
+}
+
+.sub-tight {
+  margin-bottom: 1rem;
+}
+
+/* Form fields — ChatGPT input bar feel */
+label.sub {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-muted);
 }
 
 .field {
   display: block;
   width: 100%;
-  margin-bottom: 0.75rem;
-  padding: 0.65rem 0.75rem;
-  border: 1px solid #2f3336;
-  border-radius: 8px;
-  background: #0f1419;
-  color: inherit;
+  margin-bottom: 0.875rem;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  background: var(--surface-input);
+  color: var(--text);
   font-size: 1rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.btn {
-  width: 100%;
-  padding: 0.65rem;
-  border: none;
-  border-radius: 999px;
-  background: #1d9bf0;
-  color: #fff;
-  font-size: 1rem;
-  font-weight: 600;
+.field::placeholder {
+  color: var(--text-faint);
+}
+
+.field:hover {
+  border-color: var(--border);
+}
+
+.field:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+/* Role checkboxes */
+.roles-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+  margin: 0 0 0.875rem;
+  padding: 0.875rem 1rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  background: var(--surface-input);
+}
+
+.roles-checkboxes:disabled {
+  opacity: 0.55;
+}
+
+.roles-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 0.9375rem;
+  text-transform: capitalize;
+  color: var(--text);
+  user-select: none;
+}
+
+.roles-checkbox input {
+  width: 1.125rem;
+  height: 1.125rem;
+  margin: 0;
+  accent-color: var(--accent);
   cursor: pointer;
 }
 
+.roles-checkboxes:disabled .roles-checkbox {
+  cursor: not-allowed;
+}
+
+/* Buttons — ChatGPT pill primary */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 0.7rem 1.25rem;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: #fff;
+  color: #000;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease, opacity 0.15s ease, transform 0.1s ease;
+}
+
+.btn:hover:not(:disabled) {
+  background: #e5e5e5;
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
 .btn:disabled {
-  opacity: 0.6;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
 .btn.secondary {
   background: transparent;
-  border: 1px solid #2f3336;
-  color: inherit;
+  color: var(--text);
+  border: 1px solid var(--border-subtle);
   margin-top: 0.5rem;
 }
 
+.btn.secondary:hover:not(:disabled) {
+  background: var(--surface-hover);
+  border-color: var(--border);
+}
+
+a.btn {
+  text-decoration: none;
+  color: #000;
+}
+
+a.btn.secondary {
+  color: var(--text);
+}
+
+.test-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.test-actions .btn {
+  width: auto;
+  flex: 1 1 10rem;
+}
+
+.test-actions .btn.secondary {
+  margin-top: 0;
+}
+
+/* Claims / data tables */
+.claims-table {
+  width: 100%;
+  margin: 0 0 1rem;
+  font-size: 0.8125rem;
+  border-collapse: collapse;
+}
+
+.claims-table td {
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  word-break: break-word;
+}
+
+.claims-table td:first-child {
+  color: var(--text-muted);
+  width: 5.5rem;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.claims-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* Code blocks */
+.result-pre {
+  margin: 0;
+  padding: 1rem;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  max-height: 20rem;
+}
+
+.nav-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: center;
+  margin-top: 1.5rem;
+}
+
+.nav-row a {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.nav-row a:hover {
+  color: var(--text);
+}
+
+/* Feedback */
 .feedback {
   margin-top: 1rem;
-  padding: 0.75rem;
-  border-radius: 8px;
-  font-size: 0.9rem;
+  padding: 0.75rem 0.875rem;
+  border-radius: var(--radius);
+  font-size: 0.875rem;
+  line-height: 1.45;
+  white-space: pre-line;
 }
 
 .feedback.error {
-  background: #2a1515;
-  color: #f4212e;
-  border: 1px solid #5c2020;
+  background: rgba(239, 68, 68, 0.12);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.35);
 }
 
 .feedback.success {
-  background: #152a1a;
-  color: #00ba7c;
-  border: 1px solid #1e4d2b;
+  background: rgba(16, 163, 127, 0.12);
+  color: #6ee7b7;
+  border: 1px solid rgba(16, 163, 127, 0.35);
 }
 
-.nav {
-  display: flex;
-  gap: 1rem;
-  justify-content: center;
-  padding: 1rem;
-  border-bottom: 1px solid #2f3336;
-}
-
-.nav a {
-  text-decoration: none;
-  font-weight: 500;
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }

@@ -7,7 +7,7 @@ export function Feedback({
 }) {
   if (!message) return null;
   return (
-    <div className={`feedback ${type}`} style={{ whiteSpace: "pre-line" }}>
+    <div className={`feedback ${type}`}>
       {message}
     </div>
   );

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Feedback } from "@/components/feedback";
 import {
   applyHelloSession,
@@ -10,35 +10,107 @@ import {
   type HelloResponse,
 } from "@/lib/hello";
 import {
+  applyProfileSession,
+  type ProfileResponse,
+} from "@/lib/profile";
+import {
+  authFetch,
   clearSession,
   getAccessToken,
   getAuthUser,
   type AuthUser,
 } from "@/lib/session";
 
+function ClaimsTable({ claims }: { claims: Record<string, unknown> }) {
+  const rows = Object.entries(claims).filter(([, v]) => v !== undefined);
+  if (!rows.length) return <p className="sub">No claims</p>;
+  return (
+    <table className="claims-table">
+      <tbody>
+        {rows.map(([key, value]) => (
+          <tr key={key}>
+            <td>{key}</td>
+            <td>
+              {Array.isArray(value)
+                ? value.join(", ")
+                : typeof value === "object"
+                  ? JSON.stringify(value)
+                  : String(value)}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [result, setResult] = useState<string | null>(null);
+  const [profile, setProfile] = useState<ProfileResponse | null>(null);
+  const [helloResult, setHelloResult] = useState<HelloResponse | null>(null);
+  const [rawResult, setRawResult] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{
     type: "success" | "error";
     message: string;
   } | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loadingProfile, setLoadingProfile] = useState(false);
+  const [loadingHello, setLoadingHello] = useState(false);
+
+  const refreshSessionUser = useCallback(() => {
+    setUser(getAuthUser());
+  }, []);
 
   useEffect(() => {
-    const u = getAuthUser();
-    if (!getAccessToken() || !u) {
+    if (!getAccessToken() || !getAuthUser()) {
       router.replace("/login");
       return;
     }
-    setUser(u);
-  }, [router]);
+    refreshSessionUser();
+    void loadProfile(false);
+  }, [router, refreshSessionUser]);
+
+  async function loadProfile(showFeedback = true) {
+    setLoadingProfile(true);
+    if (showFeedback) {
+      setFeedback(null);
+      setRawResult(null);
+    }
+    try {
+      const res = await authFetch("/api/profile");
+      const data: ProfileResponse = await res.json();
+      if (!res.ok) {
+        if (showFeedback) {
+          setFeedback({
+            type: "error",
+            message: data.detail ?? "Failed to load profile",
+          });
+        }
+        return;
+      }
+      setProfile(data);
+      const updated = applyProfileSession(data);
+      if (updated) setUser(updated);
+      if (showFeedback) {
+        setFeedback({ type: "success", message: "Profile loaded from gateway." });
+        setRawResult(JSON.stringify(data, null, 2));
+      }
+    } catch {
+      if (showFeedback) {
+        setFeedback({
+          type: "error",
+          message: "Failed to fetch profile — is the gateway running?",
+        });
+      }
+    } finally {
+      setLoadingProfile(false);
+    }
+  }
 
   async function callHello() {
-    setLoading(true);
+    setLoadingHello(true);
     setFeedback(null);
-    setResult(null);
+    setRawResult(null);
 
     const headers = helloAuthHeaders();
     if (!headers) {
@@ -59,15 +131,24 @@ export default function DashboardPage() {
         return;
       }
 
+      setHelloResult(body);
       applyHelloSession(body);
-      setResult(JSON.stringify(body, null, 2));
+      refreshSessionUser();
+      setUser(getAuthUser());
+      setFeedback({
+        type: "success",
+        message: body.refreshed
+          ? "Hello OK — session refreshed (new access token)."
+          : "Hello OK — token unchanged.",
+      });
+      setRawResult(JSON.stringify(body, null, 2));
     } catch {
       setFeedback({
         type: "error",
         message: "Failed to fetch — is the gateway running on port 8000?",
       });
     } finally {
-      setLoading(false);
+      setLoadingHello(false);
     }
   }
 
@@ -84,18 +165,57 @@ export default function DashboardPage() {
     );
   }
 
+  const sessionClaims = user.jwt_claims ?? {
+    sub: user.user_id,
+    email: user.email ?? "",
+    roles: user.roles,
+    team: user.team,
+    group: user.group,
+    plan: user.plan,
+  };
+
   return (
-    <main style={{ maxWidth: "36rem" }}>
-      <div className="card" style={{ marginBottom: "1rem" }}>
-        <h1>Dashboard</h1>
-        <p className="sub">
-          <strong>{user.email}</strong>
-          <br />
-          user_id: {user.user_id}
-          <br />
-          role: {user.role} · team: {user.team} · group: {user.group} · plan:{" "}
-          {user.plan}
-        </p>
+    <main className="page-wide">
+      <div className="card">
+        <h1>Test</h1>
+        <p className="sub">Test session, profile (DB), and GET /hello</p>
+
+        <ClaimsTable claims={sessionClaims as Record<string, unknown>} />
+
+        {profile?.username && (
+          <p className="sub sub-tight">
+            username: <strong>{profile.username}</strong>
+            {profile.updated_at && (
+              <>
+                {" "}
+                · updated {profile.updated_at}
+              </>
+            )}
+          </p>
+        )}
+
+        <div className="test-actions">
+          <button
+            type="button"
+            className="btn"
+            onClick={() => loadProfile(true)}
+            disabled={loadingProfile}
+          >
+            {loadingProfile ? "Loading…" : "GET /profile"}
+          </button>
+          <button
+            type="button"
+            className="btn"
+            onClick={callHello}
+            disabled={loadingHello}
+          >
+            {loadingHello ? "Loading…" : "GET /hello"}
+          </button>
+          <Link href="/profile" className="btn secondary">
+            Edit profile
+          </Link>
+        </div>
+
         <button type="button" className="btn secondary" onClick={handleSignOut}>
           Sign out
         </button>
@@ -105,39 +225,54 @@ export default function DashboardPage() {
         <Feedback type={feedback.type} message={feedback.message} />
       )}
 
-      <div className="card">
-        <h2 style={{ fontSize: "1.1rem", marginTop: 0 }}>GET /hello</h2>
-        <p className="sub">
-          Refreshes via X-Refresh-Token. refresh_token is a short opaque
-          string from Supabase (not a JWT); fresh_token is the new access JWT.
-        </p>
-        <button
-          type="button"
-          className="btn"
-          onClick={callHello}
-          disabled={loading}
-        >
-          {loading ? "Loading…" : "GET /api/hello"}
-        </button>
-        {result && (
-          <pre
-            style={{
-              marginTop: "1rem",
-              padding: "0.75rem",
-              background: "#0f1419",
-              borderRadius: 8,
-              overflow: "auto",
-              fontSize: "0.8rem",
-              whiteSpace: "pre-wrap",
-            }}
-          >
-            {result}
-          </pre>
-        )}
-      </div>
+      {helloResult?.trusted_headers && (
+        <div className="card card-spaced">
+          <h2 className="card-title">Trusted headers</h2>
+          <p className="sub">From last GET /hello — for downstream services</p>
+          <ClaimsTable
+            claims={
+              helloResult.trusted_headers as unknown as Record<string, unknown>
+            }
+          />
+        </div>
+      )}
 
-      <p className="sub" style={{ textAlign: "center", marginTop: "1.5rem" }}>
-        <Link href="/">← Home</Link>
+      {helloResult && (
+        <div className="card card-spaced">
+          <h2 className="card-title">Hello summary</h2>
+          <table className="claims-table">
+            <tbody>
+              <tr>
+                <td>message</td>
+                <td>{helloResult.message}</td>
+              </tr>
+              <tr>
+                <td>refreshed</td>
+                <td>{String(helloResult.refreshed ?? false)}</td>
+              </tr>
+              <tr>
+                <td>expires_at</td>
+                <td>{helloResult.expires_at ?? "—"}</td>
+              </tr>
+              <tr>
+                <td>refresh_len</td>
+                <td>{helloResult.refresh_token_length ?? "—"}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {rawResult && (
+        <div className="card card-spaced">
+          <h2 className="card-title">Last response</h2>
+          <pre className="result-pre">{rawResult}</pre>
+        </div>
+      )}
+
+      <p className="nav-row sub">
+        <Link href="/">Home</Link>
+        <Link href="/profile">Profile</Link>
       </p>
     </main>
   );

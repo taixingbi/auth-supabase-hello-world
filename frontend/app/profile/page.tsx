@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { Feedback } from "@/components/feedback";
+import { RolesSelect } from "@/components/roles-select";
+import { normalizeRoles } from "@/lib/roles";
 import { authFetch, getAccessToken } from "@/lib/session";
 
 type Profile = {
@@ -11,19 +13,20 @@ type Profile = {
   email: string | null;
   username: string | null;
   display_name: string | null;
-  role: string;
+  roles: string[];
   team: string;
   group: string;
   plan: string;
   jwt_claims?: {
     sub: string;
     email: string;
-    role: string;
+    roles: string[];
     team: string;
     group: string;
     plan: string;
   };
   created_at?: string;
+  updated_at?: string;
 };
 
 export default function ProfilePage() {
@@ -31,7 +34,7 @@ export default function ProfilePage() {
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
-  const [role, setRole] = useState("user");
+  const [roles, setRoles] = useState<string[]>(["user"]);
   const [team, setTeam] = useState("ai-platform");
   const [group, setGroup] = useState("engineering");
   const [plan, setPlan] = useState("free");
@@ -66,7 +69,7 @@ export default function ProfilePage() {
       setEmail(data.email ?? "");
       setUsername(data.username ?? "");
       setDisplayName(data.display_name ?? "");
-      setRole(data.role ?? "user");
+      setRoles(normalizeRoles(data.roles));
       setTeam(data.team ?? "ai-platform");
       setGroup(data.group ?? "engineering");
       setPlan(data.plan ?? "free");
@@ -92,7 +95,7 @@ export default function ProfilePage() {
           email: email.trim() || undefined,
           username: username.trim() || undefined,
           display_name: displayName.trim() || undefined,
-          role: role.trim() || undefined,
+          roles: normalizeRoles(roles),
           team: team.trim() || undefined,
           group: group.trim() || undefined,
           plan: plan.trim() || undefined,
@@ -109,7 +112,7 @@ export default function ProfilePage() {
       setEmail(data.email ?? "");
       setUsername(data.username ?? "");
       setDisplayName(data.display_name ?? "");
-      setRole(data.role ?? "user");
+      setRoles(normalizeRoles(data.roles));
       setTeam(data.team ?? team);
       setGroup(data.group ?? group);
       setPlan(data.plan ?? plan);
@@ -176,16 +179,14 @@ export default function ProfilePage() {
             placeholder="Your name"
           />
 
-          <label className="sub" htmlFor="role">
-            Role
+          <label className="sub" htmlFor="roles">
+            Roles
           </label>
-          <input
-            id="role"
-            className="field"
-            type="text"
-            value={role}
-            onChange={(e) => setRole(e.target.value)}
-            placeholder="user, admin, …"
+          <RolesSelect
+            id="roles"
+            value={roles}
+            onChange={setRoles}
+            disabled={saving}
           />
 
           <label className="sub" htmlFor="team">
@@ -233,8 +234,8 @@ export default function ProfilePage() {
           <Feedback type={feedback.type} message={feedback.message} />
         )}
 
-        <p className="sub" style={{ marginTop: "1.25rem", marginBottom: 0 }}>
-          <Link href="/dashboard">← Dashboard</Link>
+        <p className="sub card-footer">
+          <Link href="/dashboard">← Test</Link>
         </p>
       </div>
     </main>

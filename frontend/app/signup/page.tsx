@@ -97,7 +97,7 @@ export default function SignupPage() {
           <Feedback type={feedback.type} message={feedback.message} />
         )}
 
-        <p className="sub" style={{ marginTop: "1.25rem", marginBottom: 0 }}>
+        <p className="sub card-footer">
           Already have an account? <Link href="/login">Log in</Link>
         </p>
       </div>

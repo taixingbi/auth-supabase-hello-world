@@ -1,4 +1,4 @@
-"""JWT fields on auth.users user_metadata (plan is not on profiles)."""
+"""Mirror profile claims into auth.users user_metadata for Supabase JWT."""
 
 import base64
 import json
@@ -53,7 +53,7 @@ def _service_role_client():
     return supabase_admin
 
 
-def _update_user_metadata(access_token: str, data: dict[str, str]) -> None:
+def _update_user_metadata(access_token: str, data: dict) -> None:
     """PUT /auth/v1/user with the caller's access token (GoTrue user update)."""
     url = f"{SUPABASE_URL}/auth/v1/user"
     try:
@@ -82,14 +82,17 @@ def sync_jwt_metadata(
     team: str | None = None,
     group: str | None = None,
     plan: str | None = None,
+    roles: list[str] | None = None,
 ) -> None:
-    payload: dict[str, str] = {}
+    payload: dict = {}
     if team is not None:
         payload["team"] = team
     if group is not None:
         payload["group"] = group
     if plan is not None:
         payload["plan"] = plan
+    if roles is not None:
+        payload["roles"] = roles
     if not payload:
         return
 

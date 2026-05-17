@@ -13,7 +13,7 @@ export default function RootLayout({
           <Link href="/">Home</Link>
           <Link href="/login">Login</Link>
           <Link href="/signup">Sign up</Link>
-          <Link href="/dashboard">Dashboard</Link>
+          <Link href="/dashboard">Test</Link>
           <Link href="/profile">Profile</Link>
         </nav>
         {children}

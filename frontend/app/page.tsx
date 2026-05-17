@@ -8,18 +8,10 @@ export default function HomePage() {
         <p className="sub">
           Next.js → Gateway (signup, login, JWT verify)
         </p>
-        <Link
-          href="/signup"
-          className="btn"
-          style={{ display: "block", textAlign: "center", textDecoration: "none" }}
-        >
+        <Link href="/signup" className="btn">
           Create account
         </Link>
-        <Link
-          href="/login"
-          className="btn secondary"
-          style={{ display: "block", textAlign: "center", textDecoration: "none" }}
-        >
+        <Link href="/login" className="btn secondary">
           Log in
         </Link>
       </div>

@@ -1,6 +1,7 @@
 from fastapi import HTTPException
 
 from claims import UserClaims
+from roles import normalize_roles
 from config import JWT_EXPIRY_SECONDS
 from profile import fetch_profile_row
 from supabase_client import supabase
@@ -12,12 +13,24 @@ DEFAULT_GROUP = "engineering"
 DEFAULT_PLAN = "free"
 
 
+def _roles_from_user(user, row: dict) -> list[str]:
+    if row.get("roles") is not None:
+        return normalize_roles(row.get("roles"))
+    for source in (user.user_metadata or {}, user.app_metadata or {}):
+        if source.get("roles") is not None:
+            return normalize_roles(source.get("roles"))
+        legacy = source.get("role")
+        if isinstance(legacy, str) and legacy.strip():
+            return [legacy.strip()]
+    return ["user"]
+
+
 def user_to_claims(user, profile_row: dict | None = None) -> UserClaims:
     row = profile_row or {}
     return UserClaims(
         user_id=user.id,
         email=row.get("email") or user.email,
-        role=row.get("role") or meta_get(user, "role", "user"),
+        roles=_roles_from_user(user, row),
         team=row.get("team") or meta_get(user, "team", DEFAULT_TEAM),
         group=row.get("user_group") or meta_get(user, "group", DEFAULT_GROUP),
         plan=row.get("plan") or meta_get(user, "plan", DEFAULT_PLAN),

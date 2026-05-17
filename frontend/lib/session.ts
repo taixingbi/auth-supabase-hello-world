@@ -11,7 +11,7 @@ const REFRESH_MARGIN_SECONDS = 60;
 export type JwtClaims = {
   sub: string;
   email: string;
-  role: string;
+  roles: string[];
   team: string;
   group: string;
   plan: string;
@@ -20,13 +20,27 @@ export type JwtClaims = {
 export type AuthUser = {
   user_id: string;
   email: string | null;
-  role: string;
+  roles: string[];
   team: string;
   group: string;
   plan: string;
   jwt_claims?: JwtClaims;
-  roles?: string[];
 };
+
+function normalizeRoles(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    const parts = value.map((r) => String(r).trim()).filter(Boolean);
+    return parts.length ? parts : ["user"];
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parts = value
+      .split(",")
+      .map((r) => r.trim())
+      .filter(Boolean);
+    return parts.length ? parts : ["user"];
+  }
+  return ["user"];
+}
 
 export function getAccessToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -53,21 +67,35 @@ export function isAccessTokenExpired(): boolean {
 }
 
 function userFromApi(data: {
-  user?: AuthUser;
-  jwt_claims?: JwtClaims;
+  user?: AuthUser & { role?: string };
+  jwt_claims?: JwtClaims & { role?: string };
 }): AuthUser | null {
   if (!data.user) return null;
   const u = data.user;
   const claims = data.jwt_claims ?? u.jwt_claims;
+  const roles =
+    claims?.roles ??
+    u.roles ??
+    (claims?.role ? [claims.role] : undefined) ??
+    (u.role ? [u.role] : ["user"]);
+
   return {
     user_id: u.user_id,
     email: u.email,
-    role: claims?.role ?? u.role ?? "user",
+    roles: normalizeRoles(roles),
     team: claims?.team ?? u.team ?? "ai-platform",
     group: claims?.group ?? u.group ?? "engineering",
     plan: claims?.plan ?? u.plan ?? "free",
-    jwt_claims: claims,
-    roles: u.roles ?? (claims?.role ? [claims.role] : ["user"]),
+    jwt_claims: claims
+      ? {
+          sub: claims.sub,
+          email: claims.email,
+          roles: normalizeRoles(claims.roles ?? roles),
+          team: claims.team,
+          group: claims.group,
+          plan: claims.plan,
+        }
+      : undefined,
   };
 }
 
@@ -102,7 +130,11 @@ export function getAuthUser(): AuthUser | null {
   const raw = localStorage.getItem(USER_KEY);
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as AuthUser;
+    const parsed = JSON.parse(raw) as AuthUser & { role?: string };
+    return {
+      ...parsed,
+      roles: normalizeRoles(parsed.roles ?? parsed.role),
+    };
   } catch {
     return null;
   }

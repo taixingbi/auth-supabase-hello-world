@@ -12,12 +12,15 @@ export type HelloResponse = {
   fresh_token?: string;
   refreshed?: boolean;
   refresh_token?: string;
+  refresh_token_length?: number;
   expires_in?: number;
+  expires_at?: string;
   jwt_claims?: JwtClaims;
-  role?: string;
+  roles?: string[];
   team?: string;
   group?: string;
   plan?: string;
+  trusted_headers?: Record<string, string>;
   detail?: string;
 };
 
@@ -31,12 +34,11 @@ export function applyHelloSession(body: HelloResponse): void {
   const user: AuthUser = {
     user_id: prior.user_id,
     email: prior.email,
-    role: claims?.role ?? body.role ?? prior.role,
+    roles: claims?.roles ?? body.roles ?? prior.roles,
     team: claims?.team ?? body.team ?? prior.team,
     group: claims?.group ?? body.group ?? prior.group,
     plan: claims?.plan ?? body.plan ?? prior.plan,
     jwt_claims: claims,
-    roles: [claims?.role ?? prior.role],
   };
 
   setSession(
