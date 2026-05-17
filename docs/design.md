@@ -74,21 +74,33 @@ Downstream services should **trust these headers only from the gateway network**
 
 ## JWT and claims
 
-| Field | Meaning | Notes |
-|-------|---------|--------|
-| `sub` | `user_id` | Stable user id |
-| `email` | User email | From Supabase |
-| `roles` | Permissions | Default `["user"]`; `app_metadata.roles` |
+Gateway builds **application claims** from `profiles` (and `app_metadata` fallback). This is the trust shape for downstream services:
 
 ```json
 {
-  "sub": "f5d6a098-ba81-4c31-acdd-6da743d1325e",
+  "sub": "264fe290-5106-48f1-855f-d0999bc73ab6",
   "email": "test@example.com",
-  "roles": ["user"]
+  "role": "admin",
+  "team": "ai-platform",
+  "group": "engineering",
+  "plan": "pro"
 }
 ```
 
-Tokens stay in the **`Authorization` header**, not the request body.
+| Field | Source |
+|-------|--------|
+| `sub` | Supabase user id (`profiles.id`) |
+| `email` | `profiles.email` |
+| `role` | `profiles.role` (default `user`) |
+| `team` | `profiles.team` (default `ai-platform`) |
+| `group` | `profiles.user_group` (default `engineering`) |
+| `plan` | `auth.users` **`user_metadata.plan`** (default `free`; not a `profiles` column) |
+
+Returned on login and `GET /hello` as `jwt_claims`. Trusted headers: `X-User-Role`, `X-User-Team`, `X-User-Group`, `X-User-Plan`.
+
+`profiles` table: `id`, `email`, `username`, `display_name`, `role`, `created_at`, `team`, `user_group`. Saving **plan** requires `SUPABASE_SERVICE_ROLE_KEY` on the gateway.
+
+The Supabase **access JWT** remains a signed Supabase token for `Authorization`; custom claim fields are enforced at the gateway from the database.
 
 ## Auth flows
 

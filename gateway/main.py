@@ -2,7 +2,8 @@ from fastapi import Depends, FastAPI, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr, Field
 
-from auth import UserClaims, login, refresh_session, resolve_hello_tokens, signup, verify_jwt
+from auth import login, refresh_session, resolve_hello_tokens, signup, verify_jwt
+from claims import UserClaims
 from context import build_hello_response
 from deps import parse_bearer
 from profile import ProfileUpdate, get_profile, update_profile

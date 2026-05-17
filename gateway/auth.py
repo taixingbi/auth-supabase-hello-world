@@ -1,51 +1,27 @@
-import os
-from dataclasses import dataclass
-
 from fastapi import HTTPException
-from supabase import Client, create_client
 
+from claims import UserClaims
 from config import JWT_EXPIRY_SECONDS
+from profile import fetch_profile_row
+from supabase_client import supabase
 from time_util import format_unix_est
+from user_meta import meta_get
 
-SUPABASE_URL = os.environ.get("NEXT_PUBLIC_SUPABASE_URL")
-SUPABASE_ANON_KEY = os.environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY")
-SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+DEFAULT_TEAM = "ai-platform"
+DEFAULT_GROUP = "engineering"
+DEFAULT_PLAN = "free"
 
-if not SUPABASE_URL or not SUPABASE_ANON_KEY:
-    raise RuntimeError(
-        "Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in gateway/.env"
+
+def user_to_claims(user, profile_row: dict | None = None) -> UserClaims:
+    row = profile_row or {}
+    return UserClaims(
+        user_id=user.id,
+        email=row.get("email") or user.email,
+        role=row.get("role") or meta_get(user, "role", "user"),
+        team=row.get("team") or meta_get(user, "team", DEFAULT_TEAM),
+        group=row.get("user_group") or meta_get(user, "group", DEFAULT_GROUP),
+        plan=row.get("plan") or meta_get(user, "plan", DEFAULT_PLAN),
     )
-
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
-
-supabase_admin: Client | None = None
-if SUPABASE_SERVICE_ROLE_KEY:
-    supabase_admin = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-
-
-@dataclass
-class UserClaims:
-    user_id: str
-    email: str | None
-    roles: list[str]
-
-
-def _user_dict(claims: UserClaims) -> dict:
-    return {
-        "user_id": claims.user_id,
-        "email": claims.email,
-        "roles": claims.roles,
-    }
-
-
-def user_to_claims(user, profile_role: str | None = None) -> UserClaims:
-    if profile_role:
-        roles = [profile_role]
-    elif user.app_metadata and isinstance(user.app_metadata.get("roles"), list):
-        roles = user.app_metadata["roles"]
-    else:
-        roles = ["user"]
-    return UserClaims(user_id=user.id, email=user.email, roles=roles)
 
 
 def _assert_distinct_tokens(access_token: str | None, refresh_token: str | None) -> None:
@@ -63,7 +39,7 @@ def _session_payload(session, claims: UserClaims) -> dict:
             "refresh_token": None,
             "expires_in": None,
             "token_type": "bearer",
-            "user": _user_dict(claims),
+            "user": claims.to_user_dict(),
         }
 
     _assert_distinct_tokens(session.access_token, session.refresh_token)
@@ -73,8 +49,9 @@ def _session_payload(session, claims: UserClaims) -> dict:
         "expires_in": session.expires_in,
         "expires_at": format_unix_est(getattr(session, "expires_at", None)),
         "jwt_expiry_seconds": JWT_EXPIRY_SECONDS,
+        "jwt_claims": claims.to_jwt_claims(),
         "token_type": "bearer",
-        "user": _user_dict(claims),
+        "user": claims.to_user_dict(),
     }
 
 
@@ -87,7 +64,8 @@ def verify_jwt(access_token: str) -> UserClaims:
     if not response or not response.user:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    return user_to_claims(response.user)
+    row = fetch_profile_row(access_token, response.user.id)
+    return user_to_claims(response.user, row)
 
 
 def signup(email: str, password: str) -> dict:
@@ -108,7 +86,8 @@ def login(email: str, password: str) -> dict:
     if not response.session or not response.user:
         raise HTTPException(status_code=401, detail="Invalid login credentials")
 
-    return _session_payload(response.session, user_to_claims(response.user))
+    row = fetch_profile_row(response.session.access_token, response.user.id)
+    return _session_payload(response.session, user_to_claims(response.user, row))
 
 
 def refresh_session(refresh_token: str) -> dict:
@@ -120,13 +99,13 @@ def refresh_session(refresh_token: str) -> dict:
     if not response.session or not response.user:
         raise HTTPException(status_code=401, detail="Invalid refresh token")
 
-    return _session_payload(response.session, user_to_claims(response.user))
+    row = fetch_profile_row(response.session.access_token, response.user.id)
+    return _session_payload(response.session, user_to_claims(response.user, row))
 
 
 def resolve_hello_tokens(
     access_token: str, oauth_refresh: str | None
 ) -> tuple[str, str, bool, str]:
-    """Return (sent_access, active_access, refreshed, oauth_refresh_out)."""
     if not oauth_refresh or not oauth_refresh.strip():
         return access_token, access_token, False, ""
 

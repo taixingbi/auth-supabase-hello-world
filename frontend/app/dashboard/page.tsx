@@ -93,7 +93,8 @@ export default function DashboardPage() {
           <br />
           user_id: {user.user_id}
           <br />
-          roles: {user.roles.join(", ")}
+          role: {user.role} · team: {user.team} · group: {user.group} · plan:{" "}
+          {user.plan}
         </p>
         <button type="button" className="btn secondary" onClick={handleSignOut}>
           Sign out

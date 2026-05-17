@@ -1,4 +1,11 @@
-import { getAuthUser, getAccessToken, getRefreshToken, setSession } from "@/lib/session";
+import {
+  getAuthUser,
+  getAccessToken,
+  getRefreshToken,
+  setSession,
+  type AuthUser,
+  type JwtClaims,
+} from "@/lib/session";
 
 export type HelloResponse = {
   message?: string;
@@ -6,15 +13,31 @@ export type HelloResponse = {
   refreshed?: boolean;
   refresh_token?: string;
   expires_in?: number;
+  jwt_claims?: JwtClaims;
+  role?: string;
+  team?: string;
+  group?: string;
+  plan?: string;
   detail?: string;
 };
 
-/** Apply tokens from GET /hello when Supabase rotated the session. */
 export function applyHelloSession(body: HelloResponse): void {
   if (!body.fresh_token) return;
-  const user = getAuthUser();
+  const prior = getAuthUser();
   const priorRefresh = getRefreshToken();
-  if (!user) return;
+  if (!prior) return;
+
+  const claims = body.jwt_claims;
+  const user: AuthUser = {
+    user_id: prior.user_id,
+    email: prior.email,
+    role: claims?.role ?? body.role ?? prior.role,
+    team: claims?.team ?? body.team ?? prior.team,
+    group: claims?.group ?? body.group ?? prior.group,
+    plan: claims?.plan ?? body.plan ?? prior.plan,
+    jwt_claims: claims,
+    roles: [claims?.role ?? prior.role],
+  };
 
   setSession(
     body.fresh_token,

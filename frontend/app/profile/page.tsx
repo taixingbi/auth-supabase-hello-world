@@ -12,6 +12,17 @@ type Profile = {
   username: string | null;
   display_name: string | null;
   role: string;
+  team: string;
+  group: string;
+  plan: string;
+  jwt_claims?: {
+    sub: string;
+    email: string;
+    role: string;
+    team: string;
+    group: string;
+    plan: string;
+  };
   created_at?: string;
 };
 
@@ -21,6 +32,9 @@ export default function ProfilePage() {
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [role, setRole] = useState("user");
+  const [team, setTeam] = useState("ai-platform");
+  const [group, setGroup] = useState("engineering");
+  const [plan, setPlan] = useState("free");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<{
@@ -53,6 +67,9 @@ export default function ProfilePage() {
       setUsername(data.username ?? "");
       setDisplayName(data.display_name ?? "");
       setRole(data.role ?? "user");
+      setTeam(data.team ?? "ai-platform");
+      setGroup(data.group ?? "engineering");
+      setPlan(data.plan ?? "free");
     } catch {
       setFeedback({
         type: "error",
@@ -75,6 +92,10 @@ export default function ProfilePage() {
           email: email.trim() || undefined,
           username: username.trim() || undefined,
           display_name: displayName.trim() || undefined,
+          role: role.trim() || undefined,
+          team: team.trim() || undefined,
+          group: group.trim() || undefined,
+          plan: plan.trim() || undefined,
         }),
       });
       const data: Profile & { detail?: string } = await res.json();
@@ -89,6 +110,9 @@ export default function ProfilePage() {
       setUsername(data.username ?? "");
       setDisplayName(data.display_name ?? "");
       setRole(data.role ?? "user");
+      setTeam(data.team ?? team);
+      setGroup(data.group ?? group);
+      setPlan(data.plan ?? plan);
       setFeedback({ type: "success", message: "Profile saved." });
     } catch {
       setFeedback({
@@ -153,16 +177,51 @@ export default function ProfilePage() {
           />
 
           <label className="sub" htmlFor="role">
-            Role (read-only)
+            Role
           </label>
           <input
             id="role"
             className="field"
             type="text"
             value={role}
-            readOnly
-            disabled
-            style={{ opacity: 0.7 }}
+            onChange={(e) => setRole(e.target.value)}
+            placeholder="user, admin, …"
+          />
+
+          <label className="sub" htmlFor="team">
+            Team
+          </label>
+          <input
+            id="team"
+            className="field"
+            type="text"
+            value={team}
+            onChange={(e) => setTeam(e.target.value)}
+            placeholder="ai-platform"
+          />
+
+          <label className="sub" htmlFor="group">
+            Group
+          </label>
+          <input
+            id="group"
+            className="field"
+            type="text"
+            value={group}
+            onChange={(e) => setGroup(e.target.value)}
+            placeholder="engineering"
+          />
+
+          <label className="sub" htmlFor="plan">
+            Plan
+          </label>
+          <input
+            id="plan"
+            className="field"
+            type="text"
+            value={plan}
+            onChange={(e) => setPlan(e.target.value)}
+            placeholder="free, pro, …"
           />
 
           <button className="btn" type="submit" disabled={saving}>

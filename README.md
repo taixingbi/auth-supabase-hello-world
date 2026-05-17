@@ -87,6 +87,19 @@ Profile save needs **one** of:
 
 2. **Or** run `gateway/sql/profiles_rls.sql` in the Supabase SQL Editor (RLS policies for `auth.uid() = id`).
 
+### `profiles` columns (Supabase)
+
+| Column | JWT claim |
+|--------|-----------|
+| `role` | `role` |
+| `team` | `team` |
+| `user_group` | `group` (API name `group`) |
+| — | `plan` → stored in **auth `user_metadata`** (no `plan` column on `profiles`) |
+
+Add **`SUPABASE_SERVICE_ROLE_KEY`** to `gateway/.env` so saving **plan** works (updates `user_metadata`).
+
+Optional SQL: `gateway/sql/profiles_claims.sql` (only if `team` / `user_group` are missing).
+
 ## Manual curl
 
 ```bash

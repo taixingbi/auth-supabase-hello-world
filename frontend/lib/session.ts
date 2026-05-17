@@ -8,10 +8,24 @@ export const JWT_EXPIRY_SECONDS =
 
 const REFRESH_MARGIN_SECONDS = 60;
 
+export type JwtClaims = {
+  sub: string;
+  email: string;
+  role: string;
+  team: string;
+  group: string;
+  plan: string;
+};
+
 export type AuthUser = {
   user_id: string;
   email: string | null;
-  roles: string[];
+  role: string;
+  team: string;
+  group: string;
+  plan: string;
+  jwt_claims?: JwtClaims;
+  roles?: string[];
 };
 
 export function getAccessToken(): string | null {
@@ -36,6 +50,25 @@ export function isAccessTokenExpired(): boolean {
   const exp = getExpiresAtUnix();
   if (exp === null) return false;
   return Math.floor(Date.now() / 1000) >= exp - REFRESH_MARGIN_SECONDS;
+}
+
+function userFromApi(data: {
+  user?: AuthUser;
+  jwt_claims?: JwtClaims;
+}): AuthUser | null {
+  if (!data.user) return null;
+  const u = data.user;
+  const claims = data.jwt_claims ?? u.jwt_claims;
+  return {
+    user_id: u.user_id,
+    email: u.email,
+    role: claims?.role ?? u.role ?? "user",
+    team: claims?.team ?? u.team ?? "ai-platform",
+    group: claims?.group ?? u.group ?? "engineering",
+    plan: claims?.plan ?? u.plan ?? "free",
+    jwt_claims: claims,
+    roles: u.roles ?? (claims?.role ? [claims.role] : ["user"]),
+  };
 }
 
 export function setSession(
@@ -93,14 +126,20 @@ export async function refreshAccessToken(): Promise<string | null> {
   });
   const data = await res.json();
 
-  if (!res.ok || !data.access_token || !data.user) {
+  if (!res.ok || !data.access_token) {
+    clearSession();
+    return null;
+  }
+
+  const user = userFromApi(data);
+  if (!user) {
     clearSession();
     return null;
   }
 
   setSession(
     data.access_token,
-    data.user,
+    user,
     data.refresh_token ?? refreshToken,
     data.expires_in,
   );
@@ -135,3 +174,5 @@ export async function authFetch(
   }
   return res;
 }
+
+export { userFromApi };
