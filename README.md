@@ -104,4 +104,3 @@ curl -s -X POST http://localhost:8000/auth/refresh \
   -H "Content-Type: application/json" \
   -d "{\"refresh_token\":\"$REFRESH\"}" | jq
 ```
-# auth-supabase-hello-world
