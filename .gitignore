@@ -1,0 +1,9 @@
+# Python gateway
+gateway/.venv/
+gateway/__pycache__/
+gateway/.env
+
+# Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/.env.local
