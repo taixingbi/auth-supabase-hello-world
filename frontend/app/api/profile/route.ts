@@ -1,59 +1,26 @@
-const GATEWAY_URL = process.env.GATEWAY_URL ?? "http://localhost:8000";
-
-function getAuthorization(request: Request): string | null {
-  return request.headers.get("authorization");
-}
+import { proxyGateway, requireAuthorization } from "@/lib/gateway";
 
 export async function GET(request: Request) {
-  const authorization = getAuthorization(request);
-  if (!authorization) {
-    return Response.json(
-      { detail: "Missing Authorization header" },
-      { status: 401 },
-    );
-  }
+  const authorization = requireAuthorization(request);
+  if (authorization instanceof Response) return authorization;
 
-  try {
-    const res = await fetch(`${GATEWAY_URL}/profile`, {
-      headers: { Authorization: authorization },
-      cache: "no-store",
-    });
-    const data = await res.json();
-    return Response.json(data, { status: res.status });
-  } catch {
-    return Response.json(
-      { detail: `Gateway unreachable at ${GATEWAY_URL}` },
-      { status: 502 },
-    );
-  }
+  return proxyGateway("/profile", {
+    headers: { Authorization: authorization },
+    cache: "no-store",
+  });
 }
 
 export async function PATCH(request: Request) {
-  const authorization = getAuthorization(request);
-  if (!authorization) {
-    return Response.json(
-      { detail: "Missing Authorization header" },
-      { status: 401 },
-    );
-  }
+  const authorization = requireAuthorization(request);
+  if (authorization instanceof Response) return authorization;
 
   const body = await request.json();
-
-  try {
-    const res = await fetch(`${GATEWAY_URL}/profile`, {
-      method: "PATCH",
-      headers: {
-        Authorization: authorization,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json();
-    return Response.json(data, { status: res.status });
-  } catch {
-    return Response.json(
-      { detail: `Gateway unreachable at ${GATEWAY_URL}` },
-      { status: 502 },
-    );
-  }
+  return proxyGateway("/profile", {
+    method: "PATCH",
+    headers: {
+      Authorization: authorization,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
 }

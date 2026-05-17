@@ -2,7 +2,7 @@
 
 **Next.js** frontend → **Gateway** (FastAPI: auth + API gateway).
 
-Auth design details: [doc.md](./doc.md)
+Auth design details: [docs/design.md](./docs/design.md)
 
 ## Architecture
 
@@ -20,13 +20,12 @@ Gateway (FastAPI, port 8000)
 ```
 work/
 ├── gateway/
-│   ├── main.py
-│   ├── auth.py
-│   ├── context.py
+│   ├── main.py, auth.py, context.py, deps.py, jwt_util.py
 │   └── .env.example
 ├── frontend/
-│   ├── app/api/auth/, api/hello/
-│   └── login/ signup/ dashboard/
+│   ├── lib/gateway.ts, session.ts, auth.ts
+│   └── app/api/ + login/ signup/ dashboard/ profile/
+├── docs/design.md
 └── README.md
 ```
 
@@ -48,10 +47,10 @@ work/
 | `NEXT_PUBLIC_SUPABASE_URL` | `gateway/.env` | Supabase URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `gateway/.env` | Anon key |
 | `GATEWAY_URL` | `frontend/.env.local` | `http://localhost:8000` |
-| `JWT_EXPIRY_SECONDS` | `gateway/.env` | `1800` (30 min) |
-| `NEXT_PUBLIC_JWT_EXPIRY_SECONDS` | `frontend/.env.local` | `1800` (same as gateway) |
+| `JWT_EXPIRY_SECONDS` | `gateway/.env` | `3600` (1 hour) |
+| `NEXT_PUBLIC_JWT_EXPIRY_SECONDS` | `frontend/.env.local` | `3600` (same as gateway) |
 
-**Supabase:** Dashboard → **Authentication** → **JWT expiry** → set to **1800** seconds (30 minutes). Must match `JWT_EXPIRY_SECONDS` in `gateway/.env`.
+**Supabase:** Dashboard → **Authentication** → **JWT expiry** → set to **3600** seconds (1 hour). Must match `JWT_EXPIRY_SECONDS` in `gateway/.env`.
 
 ## Quick start
 

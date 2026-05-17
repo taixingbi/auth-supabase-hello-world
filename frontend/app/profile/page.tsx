@@ -17,7 +17,6 @@ type Profile = {
 
 export default function ProfilePage() {
   const router = useRouter();
-  const [token, setToken] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -30,23 +29,19 @@ export default function ProfilePage() {
   } | null>(null);
 
   useEffect(() => {
-    const t = getAccessToken();
-    if (!t) {
+    if (!getAccessToken()) {
       router.replace("/login");
       return;
     }
-    setToken(t);
-    loadProfile(t);
+    loadProfile();
   }, [router]);
 
-  async function loadProfile(accessToken: string) {
+  async function loadProfile() {
     setLoading(true);
     setFeedback(null);
-
     try {
       const res = await authFetch("/api/profile");
       const data: Profile & { detail?: string } = await res.json();
-
       if (!res.ok) {
         setFeedback({
           type: "error",
@@ -54,7 +49,6 @@ export default function ProfilePage() {
         });
         return;
       }
-
       setEmail(data.email ?? "");
       setUsername(data.username ?? "");
       setDisplayName(data.display_name ?? "");
@@ -71,11 +65,8 @@ export default function ProfilePage() {
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!token) return;
-
     setSaving(true);
     setFeedback(null);
-
     try {
       const res = await authFetch("/api/profile", {
         method: "PATCH",
@@ -87,7 +78,6 @@ export default function ProfilePage() {
         }),
       });
       const data: Profile & { detail?: string } = await res.json();
-
       if (!res.ok) {
         setFeedback({
           type: "error",
@@ -95,7 +85,6 @@ export default function ProfilePage() {
         });
         return;
       }
-
       setEmail(data.email ?? "");
       setUsername(data.username ?? "");
       setDisplayName(data.display_name ?? "");

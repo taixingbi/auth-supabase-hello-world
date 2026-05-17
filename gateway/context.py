@@ -1,55 +1,13 @@
-import base64
-import json
 import uuid
-from datetime import datetime, timezone
 
 from auth import UserClaims
-from config import JWT_EXPIRY_SECONDS, REFRESH_MARGIN_SECONDS
+from config import JWT_EXPIRY_SECONDS
+from jwt_util import jwt_expiry
 from time_util import format_unix_est
 
 
-def jwt_expiry(token: str) -> tuple[int | None, int | None]:
-    """Return (exp unix timestamp, seconds until expiry)."""
-    try:
-        parts = token.split(".")
-        if len(parts) < 2:
-            return None, None
-        payload_b64 = parts[1]
-        padding = "=" * (-len(payload_b64) % 4)
-        payload = json.loads(base64.urlsafe_b64decode(payload_b64 + padding))
-        exp = payload.get("exp")
-        if not isinstance(exp, int):
-            return None, None
-        now = int(datetime.now(timezone.utc).timestamp())
-        return exp, max(0, exp - now)
-    except Exception:
-        return None, None
-
-
-def should_refresh_jwt(
-    token: str, margin: int = REFRESH_MARGIN_SECONDS
-) -> bool:
-    """True when access token is expired or within margin seconds of exp."""
-    _exp, expires_in = jwt_expiry(token)
-    if expires_in is None:
-        return False
-    return expires_in <= margin
-
-
-def new_session_id() -> str:
-    return f"sess_{uuid.uuid4().hex[:12]}"
-
-
-def new_conversation_id() -> str:
-    return f"conv_{uuid.uuid4().hex[:12]}"
-
-
-def new_request_id() -> str:
-    return f"req_{uuid.uuid4().hex[:12]}"
-
-
-def new_trace_id() -> str:
-    return f"trace_{uuid.uuid4().hex[:12]}"
+def _new_id(prefix: str) -> str:
+    return f"{prefix}_{uuid.uuid4().hex[:12]}"
 
 
 def trusted_headers(
@@ -72,66 +30,65 @@ def trusted_headers(
     }
 
 
-def print_context(
+def _print_hello_context(
     *,
     session_id: str,
     request_id: str,
     trace_id: str,
     conversation_id: str,
-    token: str,
-    fresh_token: str,
+    access_sent: str,
+    access_active: str,
     refreshed: bool,
+    oauth_refresh: str,
     expires_at: str,
     expires_in: int | None,
 ) -> None:
     print("[hello] context:")
-    print(f"  session_id:      {session_id}")
-    print(f"  request_id:      {request_id}")
-    print(f"  trace_id:        {trace_id}")
-    print(f"  conversation_id: {conversation_id}")
-    print(f"  token:           {token}")
-    print(f"  fresh_token:     {fresh_token}")
-    print(f"  refreshed:       {refreshed}")
-    print(f"  expires_at:      {expires_at}")
-    if expires_in is not None:
-        print(f"  expires_in:      {expires_in}s")
-    else:
-        print("  expires_in:      unknown")
+    print(f"  session_id:           {session_id}")
+    print(f"  request_id:           {request_id}")
+    print(f"  trace_id:             {trace_id}")
+    print(f"  conversation_id:      {conversation_id}")
+    print(f"  access_token (sent):  {access_sent}")
+    print(f"  access_token (active): {access_active}")
+    print(f"  refreshed:            {refreshed}")
+    print(f"  oauth_refresh_token:  {oauth_refresh or '(empty)'}")
+    print(f"  expires_at:           {expires_at}")
+    print(f"  expires_in:           {expires_in if expires_in is not None else 'unknown'}s")
 
 
 def build_hello_response(
-    token: str,
-    fresh_token: str,
+    access_sent: str,
+    access_active: str,
     claims: UserClaims,
     refreshed: bool,
+    oauth_refresh: str,
     session_id: str | None,
     conversation_id: str | None,
     request_id: str | None,
     trace_id: str | None,
 ) -> dict:
-    sid = session_id or new_session_id()
-    cid = conversation_id or new_conversation_id()
-    rid = request_id or new_request_id()
-    tid = trace_id or new_trace_id()
+    sid = session_id or _new_id("sess")
+    cid = conversation_id or _new_id("conv")
+    rid = request_id or _new_id("req")
+    tid = trace_id or _new_id("trace")
 
-    exp_unix, expires_in = jwt_expiry(fresh_token)
-    expires_at = format_unix_est(exp_unix)
+    _exp, expires_in = jwt_expiry(access_active)
+    expires_at = format_unix_est(_exp)
 
-    print_context(
+    _print_hello_context(
         session_id=sid,
         request_id=rid,
         trace_id=tid,
         conversation_id=cid,
-        token=token,
-        fresh_token=fresh_token,
+        access_sent=access_sent,
+        access_active=access_active,
         refreshed=refreshed,
+        oauth_refresh=oauth_refresh,
         expires_at=expires_at,
         expires_in=expires_in,
     )
 
-    headers = trusted_headers(fresh_token, claims, sid, cid, rid, tid)
     name = claims.email or claims.user_id
-
     return {
         "message": f"Hello {name}",
         "user_id": claims.user_id,
@@ -141,11 +98,18 @@ def build_hello_response(
         "request_id": rid,
         "trace_id": tid,
         "conversation_id": cid,
-        "token": token,
-        "fresh_token": fresh_token,
+        "token": access_sent,
+        "token_kind": "access_jwt",
+        "fresh_token": access_active,
+        "fresh_token_kind": "access_jwt",
         "refreshed": refreshed,
+        "refresh_token": oauth_refresh,
+        "refresh_token_kind": "oauth_refresh_opaque",
+        "refresh_token_length": len(oauth_refresh) if oauth_refresh else 0,
         "expires_at": expires_at,
         "expires_in": expires_in,
         "jwt_expiry_seconds": JWT_EXPIRY_SECONDS,
-        "trusted_headers": headers,
+        "trusted_headers": trusted_headers(
+            access_active, claims, sid, cid, rid, tid
+        ),
     }

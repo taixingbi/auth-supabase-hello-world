@@ -3,9 +3,8 @@ const REFRESH_TOKEN_KEY = "refresh_token";
 const USER_KEY = "auth_user";
 const EXPIRES_AT_KEY = "token_expires_at";
 
-/** Default 30 min — match gateway JWT_EXPIRY_SECONDS and Supabase JWT expiry. */
 export const JWT_EXPIRY_SECONDS =
-  Number(process.env.NEXT_PUBLIC_JWT_EXPIRY_SECONDS) || 30 * 60;
+  Number(process.env.NEXT_PUBLIC_JWT_EXPIRY_SECONDS) || 60 * 60;
 
 const REFRESH_MARGIN_SECONDS = 60;
 
@@ -13,13 +12,6 @@ export type AuthUser = {
   user_id: string;
   email: string | null;
   roles: string[];
-};
-
-export type AuthSession = {
-  access_token: string;
-  refresh_token: string;
-  expires_in?: number;
-  user: AuthUser;
 };
 
 export function getAccessToken(): string | null {
@@ -52,15 +44,24 @@ export function setSession(
   refreshToken?: string | null,
   expiresIn?: number | null,
 ) {
+  if (refreshToken && refreshToken === accessToken) {
+    throw new Error(
+      "refresh_token must not equal access_token — clear site data and log in again",
+    );
+  }
+
   localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
   localStorage.setItem(USER_KEY, JSON.stringify(user));
   if (refreshToken) {
     localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+  } else {
+    localStorage.removeItem(REFRESH_TOKEN_KEY);
   }
-  const ttl =
-    expiresIn && expiresIn > 0 ? expiresIn : JWT_EXPIRY_SECONDS;
-  const expiresAt = Math.floor(Date.now() / 1000) + ttl;
-  localStorage.setItem(EXPIRES_AT_KEY, String(expiresAt));
+  const ttl = expiresIn && expiresIn > 0 ? expiresIn : JWT_EXPIRY_SECONDS;
+  localStorage.setItem(
+    EXPIRES_AT_KEY,
+    String(Math.floor(Date.now() / 1000) + ttl),
+  );
 }
 
 export function getAuthUser(): AuthUser | null {
@@ -90,7 +91,6 @@ export async function refreshAccessToken(): Promise<string | null> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ refresh_token: refreshToken }),
   });
-
   const data = await res.json();
 
   if (!res.ok || !data.access_token || !data.user) {
@@ -116,32 +116,22 @@ async function ensureFreshAccessToken(): Promise<string | null> {
   return accessToken;
 }
 
-/** Fetch with Bearer token; refreshes proactively or on 401. */
 export async function authFetch(
   input: string,
   init: RequestInit = {},
 ): Promise<Response> {
   let accessToken = await ensureFreshAccessToken();
-  if (!accessToken) {
-    throw new Error("Not authenticated");
-  }
+  if (!accessToken) throw new Error("Not authenticated");
 
   const withAuth = (token: string): RequestInit => ({
     ...init,
-    headers: {
-      ...init.headers,
-      Authorization: `Bearer ${token}`,
-    },
+    headers: { ...init.headers, Authorization: `Bearer ${token}` },
   });
 
   let res = await fetch(input, withAuth(accessToken));
-
   if (res.status === 401) {
     const newToken = await refreshAccessToken();
-    if (newToken) {
-      res = await fetch(input, withAuth(newToken));
-    }
+    if (newToken) res = await fetch(input, withAuth(newToken));
   }
-
   return res;
 }

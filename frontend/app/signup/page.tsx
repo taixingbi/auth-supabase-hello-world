@@ -4,16 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { Feedback } from "@/components/feedback";
-import { setSession } from "@/lib/session";
-
-type SignupResponse = {
-  access_token?: string | null;
-  refresh_token?: string | null;
-  expires_in?: number;
-  user?: { user_id: string; email: string | null; roles: string[] };
-  email_confirmation_required?: boolean;
-  detail?: string;
-};
+import { saveAuthSession, type AuthResponse } from "@/lib/auth";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -36,7 +27,7 @@ export default function SignupPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim(), password }),
       });
-      const data: SignupResponse = await res.json();
+      const data: AuthResponse = await res.json();
 
       if (!res.ok) {
         setFeedback({
@@ -47,13 +38,7 @@ export default function SignupPage() {
         return;
       }
 
-      if (data.access_token && data.user) {
-        setSession(
-          data.access_token,
-          data.user,
-          data.refresh_token,
-          data.expires_in,
-        );
+      if (saveAuthSession(data)) {
         setFeedback({
           type: "success",
           message: "Sign up successful. Redirecting…",
@@ -65,7 +50,7 @@ export default function SignupPage() {
       setFeedback({
         type: "success",
         message:
-          "Sign up successful. Confirm your email (if required), then log in.\n\nLocal dev: Supabase → Authentication → Email → disable “Confirm email”.",
+          "Sign up successful. Confirm your email (if required), then log in.",
       });
     } catch {
       setFeedback({

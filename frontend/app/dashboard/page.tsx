@@ -5,39 +5,20 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Feedback } from "@/components/feedback";
 import {
+  applyHelloSession,
+  helloAuthHeaders,
+  type HelloResponse,
+} from "@/lib/hello";
+import {
   clearSession,
   getAccessToken,
   getAuthUser,
-  getRefreshToken,
-  isAccessTokenExpired,
-  setSession,
   type AuthUser,
 } from "@/lib/session";
-
-type HelloResponse = {
-  message?: string;
-  user_id?: string;
-  email?: string;
-  roles?: string[];
-  session_id?: string;
-  request_id?: string;
-  trace_id?: string;
-  conversation_id?: string;
-  token?: string;
-  fresh_token?: string;
-  refreshed?: boolean;
-  refresh_token?: string;
-  expires_at?: string;
-  expires_in?: number;
-  jwt_expiry_seconds?: number;
-  trusted_headers?: Record<string, string>;
-  detail?: string;
-};
 
 export default function DashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [token, setToken] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{
     type: "success" | "error";
@@ -46,50 +27,29 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const t = getAccessToken();
-    const r = getRefreshToken();
     const u = getAuthUser();
-    if (!t || !r || !u) {
+    if (!getAccessToken() || !u) {
       router.replace("/login");
       return;
     }
-    setToken(t);
     setUser(u);
   }, [router]);
 
   async function callHello() {
-    if (!token) return;
     setLoading(true);
     setFeedback(null);
     setResult(null);
 
+    const headers = helloAuthHeaders();
+    if (!headers) {
+      router.replace("/login");
+      return;
+    }
+
     try {
-      const accessToken = getAccessToken();
-      const refreshToken = getRefreshToken();
-      if (!accessToken || !refreshToken) return;
-
-      const headers: Record<string, string> = {
-        Authorization: `Bearer ${accessToken}`,
-      };
-      if (isAccessTokenExpired()) {
-        headers["X-Refresh-Token"] = refreshToken;
-      }
-
       const res = await fetch("/api/hello", { headers });
-
       const body: HelloResponse = await res.json();
-      if (res.ok && body.refreshed && body.fresh_token) {
-        const user = getAuthUser();
-        if (user) {
-          setSession(
-            body.fresh_token,
-            user,
-            body.refresh_token ?? refreshToken,
-            body.expires_in,
-          );
-          setToken(body.fresh_token);
-        }
-      }
+
       if (!res.ok) {
         setFeedback({
           type: "error",
@@ -99,6 +59,7 @@ export default function DashboardPage() {
         return;
       }
 
+      applyHelloSession(body);
       setResult(JSON.stringify(body, null, 2));
     } catch {
       setFeedback({
@@ -115,7 +76,7 @@ export default function DashboardPage() {
     router.push("/login");
   }
 
-  if (!token || !user) {
+  if (!user) {
     return (
       <main>
         <p className="sub">Loading session…</p>
@@ -146,9 +107,8 @@ export default function DashboardPage() {
       <div className="card">
         <h2 style={{ fontSize: "1.1rem", marginTop: 0 }}>GET /hello</h2>
         <p className="sub">
-          Prints token and fresh_token (differs only after refresh). Sends
-          X-Refresh-Token when access token is near expiry.
-          (gateway terminal + JSON)
+          Refreshes via X-Refresh-Token. refresh_token is a short opaque
+          string from Supabase (not a JWT); fresh_token is the new access JWT.
         </p>
         <button
           type="button"

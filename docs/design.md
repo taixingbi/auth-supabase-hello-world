@@ -170,12 +170,23 @@ Gateway **prints** to the server console:
 }
 ```
 
+## Token shapes (Supabase Auth)
+
+| Token | Typical form | Length | Used for |
+|-------|----------------|--------|----------|
+| **Access** (`access_token`, `token`, `fresh_token`) | JWT (`eyJ…`, 3 dot-separated parts) | ~500–2000+ chars | `Authorization: Bearer` on API calls |
+| **Refresh** (`refresh_token`) | Opaque string (not a JWT) | Often **short** (e.g. 12 chars) | Only `POST /auth/refresh` or `X-Refresh-Token` on `/hello` |
+
+A short `refresh_token` like `vn2w6japr54m` is **normal** — Supabase issues compact opaque refresh tokens, not JWTs. Do not compare its length to the access JWT.
+
 ## Frontend session storage
 
 | Key | Content |
 |-----|---------|
-| `access_token` | Supabase JWT |
+| `access_token` | Supabase access JWT |
+| `refresh_token` | Supabase opaque refresh token (short is OK) |
 | `auth_user` | `{ user_id, email, roles }` |
+| `token_expires_at` | Unix time when access JWT should be refreshed |
 
 ## Code map
 

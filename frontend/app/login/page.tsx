@@ -4,16 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { Feedback } from "@/components/feedback";
+import { saveAuthSession, type AuthResponse } from "@/lib/auth";
 import { formatAuthError } from "@/lib/auth-errors";
-import { setSession } from "@/lib/session";
-
-type LoginResponse = {
-  access_token?: string;
-  refresh_token?: string;
-  expires_in?: number;
-  user?: { user_id: string; email: string | null; roles: string[] };
-  detail?: string;
-};
 
 export default function LoginPage() {
   const router = useRouter();
@@ -36,7 +28,7 @@ export default function LoginPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim(), password }),
       });
-      const data: LoginResponse = await res.json();
+      const data: AuthResponse = await res.json();
 
       if (!res.ok) {
         const detail =
@@ -48,17 +40,14 @@ export default function LoginPage() {
         return;
       }
 
-      if (!data.access_token || !data.user) {
-        setFeedback({ type: "error", message: "No session returned" });
+      if (!saveAuthSession(data)) {
+        setFeedback({
+          type: "error",
+          message: "No session returned (missing or invalid tokens)",
+        });
         return;
       }
 
-      setSession(
-        data.access_token,
-        data.user,
-        data.refresh_token,
-        data.expires_in,
-      );
       setFeedback({ type: "success", message: "Login successful. Redirecting…" });
       router.push("/profile");
     } catch {
