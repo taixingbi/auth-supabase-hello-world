@@ -4,7 +4,9 @@ const USER_KEY = "auth_user";
 const EXPIRES_AT_KEY = "token_expires_at";
 
 export const JWT_EXPIRY_SECONDS =
-  Number(process.env.NEXT_PUBLIC_JWT_EXPIRY_SECONDS) || 60 * 60;
+  Number(process.env.JWT_EXPIRY_SECONDS) ||
+  Number(process.env.NEXT_PUBLIC_JWT_EXPIRY_SECONDS) ||
+  60 * 60;
 
 const REFRESH_MARGIN_SECONDS = 60;
 

@@ -124,7 +124,7 @@ def sync_jwt_metadata(
                 status_code=400,
                 detail=(
                     f"{exc.detail}. "
-                    "Set SUPABASE_SERVICE_ROLE_KEY to the real service_role secret "
+                    "Set SUPABASE_SERVICE_KEY to the real service_role secret "
                     "(Project Settings → API), not the anon/publishable key."
                 ),
             ) from exc

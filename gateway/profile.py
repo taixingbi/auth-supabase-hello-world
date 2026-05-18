@@ -103,7 +103,7 @@ def _handle_db_error(exc: Exception) -> None:
             raise HTTPException(
                 status_code=403,
                 detail=(
-                    "Profile blocked by Supabase RLS. Add SUPABASE_SERVICE_ROLE_KEY "
+                    "Profile blocked by Supabase RLS. Add SUPABASE_SERVICE_KEY "
                     "to gateway/.env (server-only), or run sql/profiles_rls.sql in Supabase."
                 ),
             ) from exc
