@@ -9,7 +9,7 @@ import { formatAuthError } from "@/lib/auth-errors";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [feedback, setFeedback] = useState<{
     type: "success" | "error";
@@ -26,7 +26,10 @@ export default function LoginPage() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim(), password }),
+        body: JSON.stringify({
+          identifier: identifier.trim(),
+          password,
+        }),
       });
       const data: AuthResponse = await res.json();
 
@@ -64,19 +67,27 @@ export default function LoginPage() {
     <main>
       <div className="card">
         <h1>Log in</h1>
-        <p className="sub">Gateway auth → JWT (sub, email, roles)</p>
+        <p className="sub">Use your email or username and password</p>
 
         <form onSubmit={handleLogin}>
+          <label className="sub" htmlFor="identifier">
+            Email or username
+          </label>
           <input
+            id="identifier"
             className="field"
-            type="email"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            type="text"
+            placeholder="you@example.com or your_username"
+            value={identifier}
+            onChange={(e) => setIdentifier(e.target.value)}
             required
-            autoComplete="email"
+            autoComplete="username"
           />
+          <label className="sub" htmlFor="password">
+            Password
+          </label>
           <input
+            id="password"
             className="field"
             type="password"
             placeholder="Password"
@@ -95,6 +106,8 @@ export default function LoginPage() {
         )}
 
         <p className="sub card-footer">
+          <Link href="/forgot-password">Forgot password?</Link>
+          <br />
           No account? <Link href="/signup">Sign up</Link>
         </p>
       </div>

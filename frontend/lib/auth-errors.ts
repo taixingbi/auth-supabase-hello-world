@@ -17,9 +17,10 @@ export function formatAuthError(
   if (message === "Invalid login credentials" && context === "login") {
     return [
       "Invalid login credentials.",
-      "• Sign up at /signup first (same email & password)",
-      "• Wrong password? Reset in Supabase → Authentication → Users",
-      "• Email confirmation on? Confirm your email or disable it (see above)",
+      "• Use the email or username from your profile",
+      "• Sign up at /signup if you do not have an account",
+      "• Wrong password? Use Forgot password on this page",
+      "• Email confirmation on? Confirm your email or disable it in Supabase",
     ].join("\n");
   }
 

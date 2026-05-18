@@ -6,7 +6,8 @@ import { FormEvent, useEffect, useState } from "react";
 import { Feedback } from "@/components/feedback";
 import { RolesSelect } from "@/components/roles-select";
 import { normalizeRoles } from "@/lib/roles";
-import { authFetch, getAccessToken } from "@/lib/session";
+import { saveAuthSession, type AuthResponse } from "@/lib/auth";
+import { authFetch, getAccessToken, getRefreshToken } from "@/lib/session";
 
 type Profile = {
   id: string;
@@ -40,6 +41,9 @@ export default function ProfilePage() {
   const [plan, setPlan] = useState("free");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
   const [feedback, setFeedback] = useState<{
     type: "success" | "error";
     message: string;
@@ -80,6 +84,57 @@ export default function ProfilePage() {
       });
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleChangePassword(e: FormEvent) {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) {
+      setFeedback({ type: "error", message: "Passwords do not match." });
+      return;
+    }
+    setChangingPassword(true);
+    setFeedback(null);
+    try {
+      const res = await authFetch("/api/auth/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          password: newPassword,
+          refresh_token: getRefreshToken() ?? undefined,
+        }),
+      });
+      const data: AuthResponse & { message?: string } = await res.json();
+      if (!res.ok) {
+        setFeedback({
+          type: "error",
+          message:
+            typeof data.detail === "string"
+              ? data.detail
+              : "Could not change password",
+        });
+        return;
+      }
+      if (saveAuthSession(data)) {
+        setFeedback({
+          type: "success",
+          message: "Password updated and session refreshed.",
+        });
+      } else {
+        setFeedback({
+          type: "success",
+          message: data.message ?? "Password updated.",
+        });
+      }
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch {
+      setFeedback({
+        type: "error",
+        message: "Failed to fetch — is the gateway running?",
+      });
+    } finally {
+      setChangingPassword(false);
     }
   }
 
@@ -233,11 +288,45 @@ export default function ProfilePage() {
         {feedback && (
           <Feedback type={feedback.type} message={feedback.message} />
         )}
-
-        <p className="sub card-footer">
-          <Link href="/dashboard">← Test</Link>
-        </p>
       </div>
+
+      <div className="card card-spaced">
+        <h2 className="card-title">Change password</h2>
+        <p className="sub">Update your password while logged in.</p>
+        <form onSubmit={handleChangePassword}>
+          <label className="sub" htmlFor="new_password">
+            New password
+          </label>
+          <input
+            id="new_password"
+            className="field"
+            type="password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            minLength={6}
+            autoComplete="new-password"
+          />
+          <label className="sub" htmlFor="confirm_password">
+            Confirm password
+          </label>
+          <input
+            id="confirm_password"
+            className="field"
+            type="password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            minLength={6}
+            autoComplete="new-password"
+          />
+          <button className="btn secondary" type="submit" disabled={changingPassword}>
+            {changingPassword ? "Updating…" : "Update password"}
+          </button>
+        </form>
+      </div>
+
+      <p className="sub nav-row">
+        <Link href="/dashboard">← Test</Link>
+      </p>
     </main>
   );
 }

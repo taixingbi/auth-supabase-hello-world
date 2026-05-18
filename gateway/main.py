@@ -1,8 +1,17 @@
 from fastapi import Depends, FastAPI, Header
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, model_validator
 
-from auth import login, refresh_session, resolve_hello_tokens, signup, verify_jwt
+from auth import (
+    change_password,
+    forgot_password,
+    login,
+    refresh_session,
+    reset_password,
+    resolve_hello_tokens,
+    signup,
+    verify_jwt,
+)
 from claims import UserClaims
 from context import build_hello_response
 from deps import parse_bearer
@@ -24,8 +33,42 @@ class AuthBody(BaseModel):
     password: str = Field(min_length=6)
 
 
+class LoginBody(BaseModel):
+    password: str = Field(min_length=6)
+    identifier: str | None = Field(default=None, min_length=1)
+    email: str | None = Field(default=None, min_length=1)
+
+    @model_validator(mode="after")
+    def require_login_id(self) -> "LoginBody":
+        if not (self.identifier or self.email):
+            raise ValueError("identifier or email is required")
+        return self
+
+    def login_identifier(self) -> str:
+        return (self.identifier or self.email or "").strip()
+
+
 class RefreshBody(BaseModel):
     refresh_token: str = Field(min_length=1)
+
+
+class ForgotPasswordBody(BaseModel):
+    email: EmailStr
+
+
+class PasswordBody(BaseModel):
+    password: str = Field(min_length=6)
+
+
+class ResetPasswordBody(BaseModel):
+    access_token: str = Field(min_length=1)
+    password: str = Field(min_length=6)
+    refresh_token: str | None = None
+
+
+class ChangePasswordBody(BaseModel):
+    password: str = Field(min_length=6)
+    refresh_token: str | None = None
 
 
 def _token_from_claims(
@@ -41,13 +84,32 @@ def auth_signup(body: AuthBody):
 
 
 @app.post("/auth/login")
-def auth_login(body: AuthBody):
-    return login(body.email, body.password)
+def auth_login(body: LoginBody):
+    return login(body.login_identifier(), body.password)
 
 
 @app.post("/auth/refresh")
 def auth_refresh(body: RefreshBody):
     return refresh_session(body.refresh_token)
+
+
+@app.post("/auth/forgot-password")
+def auth_forgot_password(body: ForgotPasswordBody):
+    return forgot_password(body.email)
+
+
+@app.post("/auth/reset-password")
+def auth_reset_password(body: ResetPasswordBody):
+    return reset_password(body.access_token, body.password, body.refresh_token)
+
+
+@app.post("/auth/change-password")
+def auth_change_password(
+    body: ChangePasswordBody,
+    authorization: str | None = Header(default=None),
+):
+    token = parse_bearer(authorization)
+    return change_password(token, body.password, body.refresh_token)
 
 
 @app.get("/hello")

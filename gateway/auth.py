@@ -1,10 +1,12 @@
+import httpx
 from fastapi import HTTPException
+from supabase_auth.errors import AuthApiError
 
 from claims import UserClaims
+from config import FRONTEND_URL, JWT_EXPIRY_SECONDS
+from profile import fetch_profile_row, resolve_login_email
 from roles import normalize_roles
-from config import JWT_EXPIRY_SECONDS
-from profile import fetch_profile_row
-from supabase_client import supabase
+from supabase_client import SUPABASE_ANON_KEY, SUPABASE_URL, supabase
 from time_util import format_unix_est
 from user_meta import meta_get
 
@@ -92,7 +94,8 @@ def signup(email: str, password: str) -> dict:
     return payload
 
 
-def login(email: str, password: str) -> dict:
+def login(identifier: str, password: str) -> dict:
+    email = resolve_login_email(identifier)
     response = supabase.auth.sign_in_with_password(
         {"email": email, "password": password}
     )
@@ -114,6 +117,126 @@ def refresh_session(refresh_token: str) -> dict:
 
     row = fetch_profile_row(response.session.access_token, response.user.id)
     return _session_payload(response.session, user_to_claims(response.user, row))
+
+
+def _auth_error(exc: Exception, default: str = "Request failed") -> HTTPException:
+    if isinstance(exc, AuthApiError):
+        return HTTPException(status_code=400, detail=str(exc))
+    if isinstance(exc, HTTPException):
+        return exc
+    return HTTPException(status_code=400, detail=str(exc) or default)
+
+
+def _update_password_with_token(access_token: str, new_password: str) -> None:
+    url = f"{SUPABASE_URL}/auth/v1/user"
+    try:
+        res = httpx.put(
+            url,
+            headers={
+                "apikey": SUPABASE_ANON_KEY,
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json",
+            },
+            json={"password": new_password},
+            timeout=30.0,
+        )
+        res.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        detail = exc.response.text or "Could not update password"
+        raise HTTPException(status_code=exc.response.status_code, detail=detail) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+def forgot_password(email: str) -> dict:
+    redirect_to = f"{FRONTEND_URL}/auth/reset-password"
+    try:
+        supabase.auth.reset_password_for_email(
+            email.strip(),
+            {"redirect_to": redirect_to},
+        )
+    except Exception as exc:
+        raise _auth_error(exc, "Could not send reset email") from exc
+
+    return {
+        "message": "If an account exists for that email, a password reset link was sent.",
+        "redirect_to": redirect_to,
+    }
+
+
+def reset_password(
+    access_token: str,
+    new_password: str,
+    refresh_token: str | None = None,
+) -> dict:
+    """Set a new password using tokens from the Supabase recovery email link."""
+    try:
+        user_resp = supabase.auth.get_user(access_token)
+    except Exception as exc:
+        raise HTTPException(status_code=401, detail="Invalid or expired reset link") from exc
+
+    if not user_resp or not user_resp.user:
+        raise HTTPException(status_code=401, detail="Invalid or expired reset link")
+
+    _update_password_with_token(access_token, new_password)
+
+    if refresh_token:
+        try:
+            session_resp = supabase.auth.set_session(access_token, refresh_token)
+        except TypeError:
+            session_resp = supabase.auth.set_session(
+                {"access_token": access_token, "refresh_token": refresh_token}
+            )
+        except Exception as exc:
+            raise _auth_error(exc, "Password updated but session failed") from exc
+
+        if session_resp.session and session_resp.user:
+            row = fetch_profile_row(
+                session_resp.session.access_token, session_resp.user.id
+            )
+            payload = _session_payload(
+                session_resp.session, user_to_claims(session_resp.user, row)
+            )
+            payload["message"] = "Password updated successfully."
+            return payload
+
+    return {"message": "Password updated successfully. You can log in now."}
+
+
+def change_password(
+    access_token: str,
+    new_password: str,
+    refresh_token: str | None = None,
+) -> dict:
+    """Update password for the currently signed-in user."""
+    claims = verify_jwt(access_token)
+    _update_password_with_token(access_token, new_password)
+
+    if refresh_token:
+        try:
+            refreshed = supabase.auth.refresh_session(refresh_token)
+        except Exception as exc:
+            raise _auth_error(exc, "Password updated but could not refresh session") from exc
+
+        if refreshed.session and refreshed.user:
+            row = fetch_profile_row(
+                refreshed.session.access_token, refreshed.user.id
+            )
+            payload = _session_payload(
+                refreshed.session, user_to_claims(refreshed.user, row)
+            )
+            payload["message"] = "Password updated successfully."
+            return payload
+
+    row = fetch_profile_row(access_token, claims.user_id)
+    user_resp = supabase.auth.get_user(access_token)
+    if user_resp and user_resp.user:
+        return {
+            "message": "Password updated successfully.",
+            "user": user_to_claims(user_resp.user, row).to_user_dict(),
+        }
+
+    return {"message": "Password updated successfully."}
 
 
 def resolve_hello_tokens(

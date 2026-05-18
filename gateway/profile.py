@@ -113,6 +113,44 @@ def _handle_db_error(exc: Exception) -> None:
     raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+def resolve_login_email(identifier: str) -> str:
+    """Map login identifier to auth email (identifier may be email or username)."""
+    raw = identifier.strip()
+    if not raw:
+        raise HTTPException(status_code=401, detail="Invalid login credentials")
+
+    if "@" in raw:
+        return raw
+
+    if not supabase_admin:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Username login requires SUPABASE_SERVICE_KEY in gateway/.env "
+                "(lookup profiles by username)."
+            ),
+        )
+
+    try:
+        result = (
+            supabase_admin.table("profiles")
+            .select("email")
+            .eq("username", raw)
+            .limit(1)
+            .execute()
+        )
+    except Exception as exc:
+        _handle_db_error(exc)
+
+    if not result.data:
+        raise HTTPException(status_code=401, detail="Invalid login credentials")
+
+    email = result.data[0].get("email")
+    if not email:
+        raise HTTPException(status_code=401, detail="Invalid login credentials")
+    return email
+
+
 def _profiles_table(access_token: str):
     if supabase_admin:
         return supabase_admin.table("profiles")

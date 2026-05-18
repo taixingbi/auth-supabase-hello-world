@@ -12,6 +12,7 @@ export default function RootLayout({
         <nav className="nav">
           <Link href="/">Home</Link>
           <Link href="/login">Login</Link>
+          <Link href="/forgot-password">Forgot</Link>
           <Link href="/signup">Sign up</Link>
           <Link href="/dashboard">Test</Link>
           <Link href="/profile">Profile</Link>
