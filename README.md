@@ -45,8 +45,8 @@ work/
 | Variable | Where | Description |
 |----------|-------|-------------|
 | `FRONTEND_URL` | `gateway/.env` | Password-reset redirect base (e.g. `http://localhost:3000`) |
-| `SUPABASE_URL` | `gateway/.env`, `frontend/.env.local` | Supabase project URL |
-| `SUPABASE_ANON_KEY` | `gateway/.env`, `frontend/.env.local` | Anon / publishable key |
+| `SUPABASE_URL` | `gateway/.env` | Supabase project URL |
+| `SUPABASE_ANON_KEY` | `gateway/.env` | Anon / publishable key |
 | `SUPABASE_SERVICE_KEY` | `gateway/.env` only | Service role — profiles + username login |
 | `JWT_EXPIRY_SECONDS` | `gateway/.env`, `frontend/.env.local` | `3600` (match Supabase Auth JWT expiry) |
 | `GATEWAY_URL` | `frontend/.env.local` | `http://localhost:8000` |

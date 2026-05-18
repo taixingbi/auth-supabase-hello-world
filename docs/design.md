@@ -246,10 +246,10 @@ Legacy names still work: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_
 
 ```env
 GATEWAY_URL=http://localhost:8000
-SUPABASE_URL=…          # same as gateway (optional; BFF uses gateway only)
-SUPABASE_ANON_KEY=…
 JWT_EXPIRY_SECONDS=3600
 ```
+
+The browser does not call Supabase directly — only the gateway needs Supabase keys.
 
 Match **JWT expiry** with Supabase Dashboard → Authentication → JWT expiry (e.g. 3600s).
 
