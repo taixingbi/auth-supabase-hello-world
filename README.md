@@ -1,30 +1,27 @@
 # Hello World Auth
 
-**Next.js** frontend → **Gateway** (FastAPI: auth + API gateway).
+**Next.js** frontend → **Gateway** (FastAPI: auth + API gateway) → **Supabase Auth** + **`profiles`**.
 
-Auth design details: [docs/design.md](./docs/design.md)
+Auth design: [docs/design.md](./docs/design.md)
 
 ## Architecture
 
 ```
-Next.js frontend
-  ↓  POST /api/auth/login|signup
-  ↓  GET /api/hello  +  Authorization: Bearer <jwt>
-Gateway (FastAPI, port 8000)
-  · signup / login  → Supabase Auth (user DB)
-  · GET /hello      → verify JWT, print context, return JSON
+Browser → Next.js BFF (/api/*) → Gateway :8000 → Supabase Auth + profiles
 ```
+
+- Signup / login (email or username) / refresh / password reset
+- `GET /hello` — verify JWT, optional refresh, trusted headers
+- `GET` / `PATCH /profile` — roles, team, group, plan
 
 ## Project structure
 
 ```
 work/
-├── gateway/
-│   ├── main.py, auth.py, context.py, deps.py, jwt_util.py
-│   └── .env.example
-├── frontend/
-│   ├── lib/gateway.ts, session.ts, auth.ts
-│   └── app/api/ + login/ signup/ dashboard/ profile/
+├── gateway/          main.py, auth.py, profile.py, context.py, claims.py, roles.py
+│   └── sql/          profiles migrations + RLS
+├── frontend/         app/ (login, signup, profile, dashboard, forgot-password, …)
+│   └── lib/          gateway.ts, session.ts, auth.ts
 ├── docs/design.md
 └── README.md
 ```
@@ -33,85 +30,85 @@ work/
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/auth/signup` | — | Create user |
-| POST | `/auth/login` | — | Returns `access_token`, `refresh_token`, `expires_in`, `user` |
-| POST | `/auth/refresh` | — | Body: `{ "refresh_token" }` → new tokens |
-| GET | `/hello` | JWT | Print all ids + token, return JSON |
-| GET | `/profile` | JWT | Load `profiles` row |
-| PATCH | `/profile` | JWT | Update email, username, display_name |
+| POST | `/auth/signup` | — | `{ email, password }` |
+| POST | `/auth/login` | — | `{ identifier, password }` — email or username |
+| POST | `/auth/refresh` | — | `{ refresh_token }` |
+| POST | `/auth/forgot-password` | — | `{ email }` |
+| POST | `/auth/reset-password` | — | `{ access_token, password, refresh_token? }` |
+| POST | `/auth/change-password` | Bearer | `{ password, refresh_token? }` |
+| GET | `/hello` | Bearer (+ optional `X-Refresh-Token`) | Context + `trusted_headers` |
+| GET | `/profile` | Bearer | Load profile |
+| PATCH | `/profile` | Bearer | Update profile |
 
 ## Environment variables
 
 | Variable | Where | Description |
 |----------|-------|-------------|
-| `NEXT_PUBLIC_SUPABASE_URL` | `gateway/.env` | Supabase URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `gateway/.env` | Anon key |
+| `FRONTEND_URL` | `gateway/.env` | Password-reset redirect base (e.g. `http://localhost:3000`) |
+| `SUPABASE_URL` | `gateway/.env`, `frontend/.env.local` | Supabase project URL |
+| `SUPABASE_ANON_KEY` | `gateway/.env`, `frontend/.env.local` | Anon / publishable key |
+| `SUPABASE_SERVICE_KEY` | `gateway/.env` only | Service role — profiles + username login |
+| `JWT_EXPIRY_SECONDS` | `gateway/.env`, `frontend/.env.local` | `3600` (match Supabase Auth JWT expiry) |
 | `GATEWAY_URL` | `frontend/.env.local` | `http://localhost:8000` |
-| `JWT_EXPIRY_SECONDS` | `gateway/.env` | `3600` (1 hour) |
-| `NEXT_PUBLIC_JWT_EXPIRY_SECONDS` | `frontend/.env.local` | `3600` (same as gateway) |
 
-**Supabase:** Dashboard → **Authentication** → **JWT expiry** → set to **3600** seconds (1 hour). Must match `JWT_EXPIRY_SECONDS` in `gateway/.env`.
+Legacy names still work on the gateway: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`.
+
+Copy examples:
+
+```bash
+cp gateway/.env.example gateway/.env
+cp frontend/.env.local.example frontend/.env.local
+```
+
+**Supabase:** Authentication → **JWT expiry** → **3600** s. Add redirect URL: `http://localhost:3000/auth/reset-password`.
 
 ## Quick start
 
 ```bash
-# gateway (uses .venv/bin/uvicorn — avoids conda “No module named supabase”)
-cd gateway
-chmod +x run.sh && ./run.sh
-
-# or manually:
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-.venv/bin/uvicorn main:app --reload --host 0.0.0.0 --port 8000
-
-# frontend
+cd gateway && chmod +x run.sh && ./run.sh
+# other terminal:
 cd frontend && npm run dev
 ```
 
-1. Sign up / log in  
-2. Dashboard → **GET /api/hello**  
-3. **Profile** at http://localhost:3000/profile — edit email, username, display_name  
-4. Dashboard → **GET /api/hello** — see JSON + gateway terminal output
+1. Sign up / log in (email or username) at http://localhost:3000/login  
+2. **Test** (`/dashboard`) — load profile, **GET /hello**  
+3. **Profile** — edit username, roles (`user` / `admin`), team, group, plan; change password  
+4. **Forgot password** — `/forgot-password` → email link → `/auth/reset-password`
 
-### Supabase `profiles` table
+## Supabase `profiles` table
 
-Profile save needs **one** of:
-
-1. **Recommended:** add to `gateway/.env` (never commit, never use in frontend):
-
-   ```env
-   SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-   ```
-
-   From Supabase → Project Settings → API → `service_role` secret.
-
-2. **Or** run `gateway/sql/profiles_rls.sql` in the Supabase SQL Editor (RLS policies for `auth.uid() = id`).
-
-### `profiles` columns (Supabase)
-
-| Column | JWT claim |
-|--------|-----------|
-| `role` | `role` |
+| Column | API / claim |
+|--------|-------------|
+| `id` | `sub` |
+| `email` | `email` |
+| `username` | unique, required |
+| `roles` | `roles[]` (`user`, `admin`) |
 | `team` | `team` |
-| `user_group` | `group` (API name `group`) |
-| — | `plan` → stored in **auth `user_metadata`** (no `plan` column on `profiles`) |
+| `user_group` | `group` |
+| `plan` | `plan` |
+| `created_at`, `updated_at` | — |
 
-Add **`SUPABASE_SERVICE_ROLE_KEY`** to `gateway/.env` so saving **plan** works (updates `user_metadata`).
+**Profile access** — use one of:
 
-Optional SQL: `gateway/sql/profiles_claims.sql` (only if `team` / `user_group` are missing).
+1. **`SUPABASE_SERVICE_KEY`** in `gateway/.env` (recommended; also enables username login), or  
+2. Run `gateway/sql/profiles_rls.sql` (RLS for `auth.uid() = id`).
+
+Migrations: `gateway/sql/profiles_role_to_roles.sql`, `gateway/sql/profiles_claims.sql`.
 
 ## Manual curl
 
 ```bash
+# login (email or username as identifier)
 RESP=$(curl -s -X POST http://localhost:8000/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"you@example.com","password":"yourpass"}')
+  -d '{"identifier":"you@example.com","password":"yourpass"}')
 TOKEN=$(echo "$RESP" | jq -r .access_token)
 REFRESH=$(echo "$RESP" | jq -r .refresh_token)
 
-curl -H "Authorization: Bearer $TOKEN" "http://localhost:8000/hello"
+curl -s -H "Authorization: Bearer $TOKEN" \
+  -H "X-Refresh-Token: $REFRESH" \
+  "http://localhost:8000/hello" | jq
 
-# refresh when access token expires
 curl -s -X POST http://localhost:8000/auth/refresh \
   -H "Content-Type: application/json" \
   -d "{\"refresh_token\":\"$REFRESH\"}" | jq

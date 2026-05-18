@@ -1,258 +1,288 @@
 # Auth design
 
-Authentication for **Next.js** + **Gateway** (FastAPI) + **Supabase Auth**.
+Authentication for **Next.js** (BFF) + **Gateway** (FastAPI) + **Supabase Auth**.
 
 ## Goals
 
-- **Single trust boundary:** the browser talks to the **gateway** with a JWT; the gateway verifies it and owns identity.
-- **No Supabase in the browser** for login/signup — credentials go to the gateway only.
-- **Production-ready pattern:** frontend sends JWT; gateway derives trusted headers for downstream services (orchestrator, RAG, LLM).
+- **Single trust boundary:** browser → gateway with a Supabase access JWT; gateway verifies and owns identity.
+- **No Supabase SDK in the browser** for auth — credentials and tokens flow through the Next.js BFF to the gateway.
+- **Production pattern:** gateway derives **trusted headers** from verified JWT + `profiles` for downstream services.
 
-## High-level architecture
+## Architecture
 
 ```
-┌─────────────┐     POST /api/auth/*      ┌──────────────────┐
-│   Next.js   │ ────────────────────────► │     Gateway      │
-│  (browser)  │     GET /api/hello        │  (FastAPI :8000) │
-│             │     Authorization: Bearer │                  │
-└─────────────┘                           └────────┬─────────┘
-                                                   │
-                                                   │ signup / login / verify
-                                                   ▼
-                                          ┌──────────────────┐
-                                          │  Supabase Auth   │
-                                          │  (auth.users)    │
-                                          └──────────────────┘
+┌─────────────┐   /api/auth/*, /api/hello, /api/profile   ┌─────────────────┐
+│   Next.js   │ ──────────────────────────────────────────► │ Gateway :8000   │
+│  (browser)  │   Authorization: Bearer <access_jwt>        │ FastAPI         │
+└─────────────┘   X-Refresh-Token (hello only, optional)    └────────┬────────┘
+                                                                       │
+                    signup · login · refresh · password · verify       ▼
+                                                              ┌─────────────────┐
+                                                              │ Supabase Auth   │
+                                                              │ + profiles DB   │
+                                                              └─────────────────┘
 
-Future:
-
-┌──────────────────┐     trusted headers    ┌──────────────┐     ┌─────────┐
-│     Gateway      │ ─────────────────────► │ orchestrator │ ──► │ RAG/LLM │
-└──────────────────┘                        └──────────────┘     └─────────┘
+Future: Gateway ──trusted headers──► orchestrator ──► RAG / LLM
 ```
-
-## Roles of each layer
 
 | Layer | Responsibility |
 |-------|----------------|
-| **Next.js** | UI, BFF (`/api/auth/*`, `/api/hello`), JWT in `localStorage` |
-| **Gateway** | Signup, login, JWT verification, request context, trusted headers |
-| **Supabase** | User store, passwords, JWT issuance |
-
-The **gateway** is both **auth service** and **API gateway / BFF** for protected routes.
+| **Next.js** | UI, BFF routes, `localStorage` session |
+| **Gateway** | Auth, JWT verify, profile CRUD, trusted headers, hello context |
+| **Supabase** | `auth.users`, passwords, JWT issuance; `profiles` for app claims |
 
 ## Trust boundaries
 
-### Rule 1: Frontend → Gateway
+### Browser → Gateway
 
-The browser sends **only**:
+Send only:
 
 ```http
 Authorization: Bearer <access_token>
 ```
 
-Optional query params on `GET /hello`: `session_id`, `request_id`, `trace_id`, `conversation_id`.
-
-The frontend must **not** send `X-User-*` headers — the gateway sets those after JWT verification.
-
-### Rule 2: Gateway → Downstream (orchestrator)
-
-After verifying the JWT, the gateway may forward:
+Optional on `GET /hello`:
 
 ```http
-Authorization: Bearer <jwt>
-X-User-Id: <sub / user_id>
-X-User-Email: user@example.com
-X-User-Roles: user
-X-Session-Id: sess_...
-X-Conversation-Id: conv_...
-X-Request-Id: req_...
-X-Trace-Id: trace_...
+X-Refresh-Token: <opaque_refresh_token>
 ```
 
-Downstream services should **trust these headers only from the gateway network**, not from the public internet.
+Optional query: `session_id`, `conversation_id`, `request_id`, `trace_id`.
 
-## JWT and claims
+Do **not** send `X-User-*` from the browser — the gateway sets those after verification.
 
-Gateway builds **application claims** from `profiles` (and `app_metadata` fallback). This is the trust shape for downstream services:
+### Gateway → Downstream
+
+After `verify_jwt`, the gateway may attach:
+
+| Header | Value |
+|--------|--------|
+| `Authorization` | `Bearer <active_access_jwt>` |
+| `X-User-Id` | `sub` / user id |
+| `X-User-Email` | email |
+| `X-User-Roles` | comma-separated roles (e.g. `user,admin`) |
+| `X-User-Team` | team |
+| `X-User-Group` | group (from `profiles.user_group`) |
+| `X-User-Plan` | plan |
+| `X-Session-Id` | `sess_*` |
+| `X-Conversation-Id` | `conv_*` |
+| `X-Request-Id` | `req_*` |
+| `X-Trace-Id` | `trace_*` |
+
+Downstream must trust these **only from the gateway**, not from the public internet.
+
+## Application claims (`jwt_claims`)
+
+Built from `profiles` (+ `auth.users` metadata fallback). Returned on login, refresh, and `/hello`.
 
 ```json
 {
-  "sub": "264fe290-5106-48f1-855f-d0999bc73ab6",
-  "email": "test@example.com",
-  "role": "admin",
+  "sub": "uuid",
+  "email": "user@example.com",
+  "roles": ["user"],
   "team": "ai-platform",
   "group": "engineering",
-  "plan": "pro"
+  "plan": "free"
 }
 ```
 
 | Field | Source |
 |-------|--------|
-| `sub` | Supabase user id (`profiles.id`) |
+| `sub` | `profiles.id` |
 | `email` | `profiles.email` |
-| `role` | `profiles.role` (default `user`) |
-| `team` | `profiles.team` (default `ai-platform`) |
-| `group` | `profiles.user_group` (default `engineering`) |
-| `plan` | `auth.users` **`user_metadata.plan`** (default `free`; not a `profiles` column) |
+| `roles` | `profiles.roles` (`text[]`, allowed: `user`, `admin`) |
+| `team` | `profiles.team` |
+| `group` | `profiles.user_group` |
+| `plan` | `profiles.plan` |
 
-Returned on login and `GET /hello` as `jwt_claims`. Trusted headers: `X-User-Role`, `X-User-Team`, `X-User-Group`, `X-User-Plan`.
+Claims are also mirrored to `auth.users.user_metadata` on profile save (for consistency). The **Supabase access JWT** remains the signed token in `Authorization`; custom fields are enforced at the gateway from the database.
 
-`profiles` table: `id`, `email`, `username`, `display_name`, `role`, `created_at`, `team`, `user_group`. Saving **plan** requires `SUPABASE_SERVICE_ROLE_KEY` on the gateway.
+### `profiles` table
 
-The Supabase **access JWT** remains a signed Supabase token for `Authorization`; custom claim fields are enforced at the gateway from the database.
+| Column | Notes |
+|--------|--------|
+| `id` | uuid, PK, matches `auth.users.id` |
+| `email` | text |
+| `username` | text, NOT NULL, unique — auto-set on first profile create |
+| `display_name` | text, optional |
+| `roles` | `text[]`, default `{user}` |
+| `plan` | text |
+| `team` | text |
+| `user_group` | text (API field name: `group`) |
+| `created_at`, `updated_at` | timestamptz |
+
+Migrations: `gateway/sql/profiles_role_to_roles.sql`, `gateway/sql/profiles_claims.sql`, `gateway/sql/profiles_rls.sql`.
 
 ## Auth flows
 
 ### Signup
 
-```
-Browser  POST /api/auth/signup
-    →  Next BFF  POST {GATEWAY_URL}/auth/signup
-    →  Supabase  auth.sign_up
-    ←  { access_token?, user, email_confirmation_required? }
-```
+`POST /api/auth/signup` → `POST /auth/signup` → `auth.sign_up` → tokens + `user` (profile created on first `/profile` or `/hello` access).
 
-### Login
+### Login (email or username)
 
-```
-Browser  POST /api/auth/login
-    →  Next BFF  POST {GATEWAY_URL}/auth/login
-    →  Supabase  auth.sign_in_with_password
-    ←  { access_token, user: { user_id, email, roles } }
-```
+`POST /api/auth/login` with `{ "identifier": "email or username", "password" }` (legacy `{ "email" }` still accepted).
 
-### Protected request (GET /hello)
+- Contains `@` → treat as email → `sign_in_with_password`.
+- Otherwise → lookup `profiles.email` by `username` (requires `SUPABASE_SERVICE_KEY` on gateway) → sign in with that email.
 
-```
-Browser  GET /api/hello  Authorization: Bearer <jwt>
-    →  Next BFF  GET {GATEWAY_URL}/hello
-    →  Gateway  verify_jwt → print context → JSON response
-```
+### Refresh
 
-Gateway **prints** to the server console:
+`POST /api/auth/refresh` with `{ "refresh_token" }` → new access JWT + user payload.
 
-```
-[hello] context:
-  session_id:      sess_...
-  request_id:      req_...
-  trace_id:        trace_...
-  conversation_id: conv_...
-  token:           <jwt>
-```
+### Forgot / reset password
+
+1. `POST /auth/forgot-password` `{ "email" }` → Supabase sends email.
+2. Link opens `{FRONTEND_URL}/auth/reset-password#access_token=...&type=recovery`.
+3. `POST /auth/reset-password` `{ "access_token", "password", "refresh_token"? }` → new password; may return session.
+
+**Supabase:** add `http://localhost:3000/auth/reset-password` to Auth → URL configuration. Set `FRONTEND_URL` in `gateway/.env`.
+
+### Change password (logged in)
+
+`POST /auth/change-password` + `Authorization` + `{ "password", "refresh_token"? }` → updates password; refreshes session if refresh token sent.
+
+### GET /hello
+
+1. Verify bearer JWT (token sent by client).
+2. If `X-Refresh-Token` present → refresh session → `refreshed: true`, new `fresh_token`.
+3. Load claims, print context to gateway console, return JSON + `trusted_headers`.
 
 ## API reference (gateway)
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| `POST` | `/auth/signup` | No | Create user |
-| `POST` | `/auth/login` | No | Return JWT + user |
-| `GET` | `/hello` | Bearer JWT | Verify token, print context |
-| `GET` | `/profile` | Bearer JWT | Load `profiles` from DB |
-| `PATCH` | `/profile` | Bearer JWT | Update email, username, display_name |
+| `POST` | `/auth/signup` | — | `{ email, password }` |
+| `POST` | `/auth/login` | — | `{ identifier, password }` or `{ email, password }` |
+| `POST` | `/auth/refresh` | — | `{ refresh_token }` |
+| `POST` | `/auth/forgot-password` | — | `{ email }` |
+| `POST` | `/auth/reset-password` | — | `{ access_token, password, refresh_token? }` |
+| `POST` | `/auth/change-password` | Bearer | `{ password, refresh_token? }` |
+| `GET` | `/hello` | Bearer (+ optional `X-Refresh-Token`) | Verify / refresh, context + trusted headers |
+| `GET` | `/profile` | Bearer | Load profile row |
+| `PATCH` | `/profile` | Bearer | Update profile fields |
 
-### Login response
+### Login response (example)
 
 ```json
 {
-  "access_token": "<jwt>",
-  "token_type": "bearer",
-  "user": {
-    "user_id": "uuid",
-    "email": "test@example.com",
-    "roles": ["user"]
-  }
+  "access_token": "eyJ…",
+  "refresh_token": "opaque_short_string",
+  "expires_in": 3600,
+  "expires_at": "2026-05-17 12:00:00 EST",
+  "jwt_claims": { "sub": "…", "email": "…", "roles": ["user"], "team": "…", "group": "…", "plan": "free" },
+  "user": { "user_id": "…", "email": "…", "roles": ["user"], "team": "…", "group": "…", "plan": "free", "jwt_claims": { … } }
 }
 ```
 
-### GET /hello response
+### GET /hello response (key fields)
 
 ```json
 {
-  "message": "Hello test@example.com",
-  "user_id": "uuid",
-  "email": "test@example.com",
+  "message": "Hello user@example.com",
   "roles": ["user"],
-  "session_id": "sess_abc",
-  "request_id": "req_def",
-  "trace_id": "trace_ghi",
-  "conversation_id": "conv_jkl",
-  "token": "<jwt>",
-  "trusted_headers": { ... }
+  "jwt_claims": { … },
+  "token": "<jwt_sent>",
+  "fresh_token": "<active_jwt>",
+  "refreshed": true,
+  "refresh_token": "<opaque>",
+  "trusted_headers": { "X-User-Roles": "user", … },
+  "session_id": "sess_…",
+  "expires_at": "… EST",
+  "expires_in": 3600
 }
 ```
 
-## Token shapes (Supabase Auth)
+## Token shapes
 
-| Token | Typical form | Length | Used for |
-|-------|----------------|--------|----------|
-| **Access** (`access_token`, `token`, `fresh_token`) | JWT (`eyJ…`, 3 dot-separated parts) | ~500–2000+ chars | `Authorization: Bearer` on API calls |
-| **Refresh** (`refresh_token`) | Opaque string (not a JWT) | Often **short** (e.g. 12 chars) | Only `POST /auth/refresh` or `X-Refresh-Token` on `/hello` |
+| Token | Form | Notes |
+|-------|------|--------|
+| **Access** | JWT (`eyJ…`) | `Authorization: Bearer`; stored as `access_token` |
+| **Refresh** | Opaque, often short | **Not a JWT**; only for `/auth/refresh` or `X-Refresh-Token` on `/hello` |
 
-A short `refresh_token` like `vn2w6japr54m` is **normal** — Supabase issues compact opaque refresh tokens, not JWTs. Do not compare its length to the access JWT.
+Never store `refresh_token` equal to `access_token`.
 
-## Frontend session storage
+## Frontend session (`localStorage`)
 
 | Key | Content |
 |-----|---------|
 | `access_token` | Supabase access JWT |
-| `refresh_token` | Supabase opaque refresh token (short is OK) |
-| `auth_user` | `{ user_id, email, roles }` |
-| `token_expires_at` | Unix time when access JWT should be refreshed |
+| `refresh_token` | Opaque refresh token |
+| `auth_user` | `{ user_id, email, roles[], team, group, plan, jwt_claims? }` |
+| `token_expires_at` | Unix expiry (refresh ~60s before) |
+
+Pages: `/login`, `/signup`, `/forgot-password`, `/auth/reset-password`, `/profile`, `/dashboard` (UI label **Test**).
 
 ## Code map
 
-| File | Purpose |
-|------|---------|
-| `gateway/auth.py` | Supabase client, signup, login, `verify_jwt` |
-| `gateway/context.py` | Ids, `trusted_headers`, `print_context`, hello response |
-| `gateway/main.py` | FastAPI routes, CORS |
-| `gateway/profile.py` | CRUD for `profiles` table |
-| `frontend/app/profile/page.tsx` | Profile edit UI |
-| `frontend/lib/session.ts` | Token + user in `localStorage` |
-| `frontend/app/api/auth/*/route.ts` | BFF → gateway auth |
-| `frontend/app/api/hello/route.ts` | BFF → gateway GET /hello |
+| Area | Files |
+|------|--------|
+| Gateway routes | `gateway/main.py` |
+| Auth | `gateway/auth.py` |
+| Claims / roles | `gateway/claims.py`, `gateway/roles.py` |
+| Hello / headers | `gateway/context.py` |
+| Profiles | `gateway/profile.py` |
+| Metadata sync | `gateway/user_meta.py` |
+| Supabase client | `gateway/supabase_client.py` |
+| BFF | `frontend/app/api/**/route.ts`, `frontend/lib/gateway.ts` |
+| Session | `frontend/lib/session.ts`, `frontend/lib/auth.ts` |
+| UI | `frontend/app/login`, `profile`, `dashboard`, `forgot-password`, `auth/reset-password` |
 
 ## Configuration
 
 **`gateway/.env`:**
 
 ```env
-NEXT_PUBLIC_SUPABASE_URL=https://<project>.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon-key>
+FRONTEND_URL=http://localhost:3000
+SUPABASE_URL=https://<project>.supabase.co
+SUPABASE_ANON_KEY=<anon-or-publishable-key>
+JWT_EXPIRY_SECONDS=3600
+SUPABASE_SERVICE_KEY=<service_role-secret>   # profiles RLS bypass + username login lookup
 ```
+
+Legacy names still work: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`.
 
 **`frontend/.env.local`:**
 
 ```env
 GATEWAY_URL=http://localhost:8000
+SUPABASE_URL=…          # same as gateway (optional; BFF uses gateway only)
+SUPABASE_ANON_KEY=…
+JWT_EXPIRY_SECONDS=3600
 ```
 
-Only the **gateway** calls Supabase at runtime. The Next.js BFF proxies to `GATEWAY_URL`.
+Match **JWT expiry** with Supabase Dashboard → Authentication → JWT expiry (e.g. 3600s).
 
-## Security notes
+## Security
 
-- Use Supabase **anon** key on the gateway; never **service role** in the browser.
-- Restrict CORS in production.
-- Validate JWT on every protected route before setting `X-User-*` headers.
-- Do not log JWTs in production; hello-world prints to the dev console only.
+- **Anon key** on gateway only; **service role** only in `gateway/.env`, never in the browser.
+- Restrict CORS in production (`allow_origins`).
+- Verify JWT on every protected route before setting `X-User-*`.
+- Username login and profile writes need service key or correct RLS (`profiles_rls.sql`).
+- Do not log full JWTs in production (hello prints tokens in dev only).
+- Password reset redirect URL must be allowlisted in Supabase.
 
 ## Local development
 
-1. Disable Supabase **Confirm email** for easier login.
-2. Do not overwrite `frontend/.env.local` with placeholders.
-3. Restart `npm run dev` after env changes; restart `uvicorn` after `gateway/.env` changes.
-
 ```bash
-cd gateway && uvicorn main:app --reload --host 0.0.0.0 --port 8000
+# Terminal 1
+cd gateway && ./run.sh
+
+# Terminal 2
+cd frontend && npm run dev
 ```
 
-## Evolution path
+1. Supabase → Authentication → disable **Confirm email** (optional, for faster dev).
+2. Add redirect URL: `http://localhost:3000/auth/reset-password`.
+3. Restart both processes after `.env` changes.
 
-| Phase | Change |
+## Evolution
+
+| Phase | Status |
 |-------|--------|
-| **Now** | Gateway + Supabase JWT + GET `/hello` |
-| **Next** | Gateway `POST /chat` → orchestrator with `trusted_headers` |
-| **Later** | Refresh tokens, httpOnly cookies, service auth to orchestrator |
+| Gateway auth + profiles + `/hello` + refresh | Done |
+| Email/username login, password reset, profile roles | Done |
+| Gateway `POST /chat` → orchestrator + `trusted_headers` | Next |
+| httpOnly cookies, service-to-service auth | Later |
 
 **Frontend sends JWT; gateway verifies and forwards trusted identity.**
